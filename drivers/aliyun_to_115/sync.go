@@ -10,6 +10,7 @@ import (
 	"time"
 
 	_115 "github.com/OpenListTeam/OpenList/v4/drivers/115"
+	"github.com/OpenListTeam/OpenList/v4/drivers/aliyundrive_share2open"
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
 	"github.com/OpenListTeam/OpenList/v4/pkg/http_range"
 	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
@@ -178,11 +179,9 @@ func (d *AliyunTo115) walkFilesRecursively(ctx context.Context, aliyun aliyunSto
 		}
 		return result, nil
 	}
-	// For Share2Open, GetRootId() returns "root" which is invalid for List().
-	// Use "" (empty) so List() sets parent_file_id="" to get root files.
-	rootID := ""
-	if !aliyun.IsShareDriver() {
-		rootID = aliyun.GetRootId()
+	rootID := aliyun.GetRootId()
+	if _, ok := aliyun.(*aliyundrive_share2open.AliyundriveShare2Open); ok {
+		rootID = ""
 	}
 	return walk("", rootID)
 }

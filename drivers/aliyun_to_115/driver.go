@@ -6,28 +6,31 @@ import (
 	"sync"
 
 	aliyundrive_open "github.com/OpenListTeam/OpenList/v4/drivers/aliyundrive_open"
+	aliyundrive_share2open "github.com/OpenListTeam/OpenList/v4/drivers/aliyundrive_share2open"
 	_115 "github.com/OpenListTeam/OpenList/v4/drivers/115"
 	"github.com/OpenListTeam/OpenList/v4/internal/driver"
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
 	"github.com/OpenListTeam/OpenList/v4/internal/op"
 )
 
+// aliyunStorage unifies AliyundriveOpen and AliyundriveShare2Open for sync.
+type aliyunStorage interface {
+	List(ctx context.Context, dir model.Obj, args model.ListArgs) ([]model.Obj, error)
+	Link(ctx context.Context, file model.Obj, args model.LinkArgs) (*model.Link, error)
+	GetRootId() string
+	GetStorage() *model.Storage
+}
+
 type AliyunTo115 struct {
 	// p115 provides List/Put/Link/etc. (Pan115 embeds model.Storage → satisfies SetStorage/GetStorage)
 	p115 _115.Pan115
 	// aliased addition lives as a named field, not embedded, to avoid shadowing p115.Addition
 	Addition
-	p115Client    *sync115Client
-	aliyunStorages []*aliyundriveWrapper
-	syncLoopMu    sync.Mutex
-	syncRunning   bool
-	syncedCache   map[string]bool // SHA1 → true, persistent across sync cycles
-}
-
-type aliyundriveWrapper struct {
-	driver    *aliyundrive_open.AliyundriveOpen
-	rootID    string
-	mountPath string
+	p115Client     *sync115Client
+	aliyunStorages []aliyunStorage
+	syncLoopMu     sync.Mutex
+	syncRunning    bool
+	syncedCache    map[string]bool // SHA1 → true, persistent across sync cycles
 }
 
 func (d *AliyunTo115) Config() driver.Config { return config }
@@ -73,27 +76,18 @@ func (d *AliyunTo115) Drop(ctx context.Context) error {
 	return d.p115.Drop(ctx)
 }
 
-// discoverAliyunStorages finds all initialized AliyundriveOpen storages.
-func (d *AliyunTo115) discoverAliyunStorages() []*aliyundriveWrapper {
-	var wrappers []*aliyundriveWrapper
+// discoverAliyunStorages finds all AliyundriveOpen and AliyundriveShare2Open storages.
+func (d *AliyunTo115) discoverAliyunStorages() []aliyunStorage {
+	var storages []aliyunStorage
 	for _, s := range op.GetAllStorages() {
-		aliyun, ok := s.(*aliyundrive_open.AliyundriveOpen)
-		if !ok {
-			continue
+		switch v := s.(type) {
+		case *aliyundrive_open.AliyundriveOpen:
+			storages = append(storages, v)
+		case *aliyundrive_share2open.AliyundriveShare2Open:
+			storages = append(storages, v)
 		}
-		storage := aliyun.GetStorage()
-		rootID := aliyun.GetRootId()
-		mountPath := ""
-		if storage != nil {
-			mountPath = storage.MountPath
-		}
-		wrappers = append(wrappers, &aliyundriveWrapper{
-			driver:    aliyun,
-			rootID:    rootID,
-			mountPath: mountPath,
-		})
 	}
-	return wrappers
+	return storages
 }
 
 func (d *AliyunTo115) List(ctx context.Context, dir model.Obj, args model.ListArgs) ([]model.Obj, error) {

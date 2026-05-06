@@ -81,10 +81,14 @@ func (d *AliyunTo115) doSync() {
 
 	var total, skipped, noLink, failed, synced, rapid, normal int64
 
-	for _, aw := range d.aliyunStorages {
-		files, err := d.walkFilesRecursively(ctx, aw)
+	for _, aliyun := range d.aliyunStorages {
+		mountPath := ""
+		if s := aliyun.GetStorage(); s != nil {
+			mountPath = s.MountPath
+		}
+		files, err := d.walkFilesRecursively(ctx, aliyun)
 		if err != nil {
-			fmt.Printf("[aliyun_to_115] walk error for %s: %v\n", aw.mountPath, err)
+			fmt.Printf("[aliyun_to_115] walk error for %s: %v\n", mountPath, err)
 			continue
 		}
 		total += int64(len(files))
@@ -106,7 +110,7 @@ func (d *AliyunTo115) doSync() {
 			d.syncLoopMu.Unlock()
 
 			// Get download link from Aliyun
-			link, err := aw.driver.Link(ctx, file, model.LinkArgs{})
+			link, err := aliyun.Link(ctx, file, model.LinkArgs{})
 			if err != nil || link == nil || link.URL == "" {
 				fmt.Printf("[aliyun_to_115] no download link: %s (sha1=%s): %v\n", file.GetPath(), sha1Str, err)
 				noLink++
@@ -148,7 +152,7 @@ func (d *AliyunTo115) doSync() {
 }
 
 // walkFilesRecursively recursively lists all files under an aliyun storage.
-func (d *AliyunTo115) walkFilesRecursively(ctx context.Context, aw *aliyundriveWrapper) ([]*fileWithPath, error) {
+func (d *AliyunTo115) walkFilesRecursively(ctx context.Context, aliyun aliyunStorage) ([]*fileWithPath, error) {
 	visited := make(map[string]bool)
 	var walk func(parentPath, parentID string) ([]*fileWithPath, error)
 	walk = func(parentPath, parentID string) ([]*fileWithPath, error) {
@@ -157,7 +161,7 @@ func (d *AliyunTo115) walkFilesRecursively(ctx context.Context, aw *aliyundriveW
 		}
 		visited[parentID] = true
 
-		files, err := aw.driver.List(ctx, &model.Object{ID: parentID}, model.ListArgs{})
+		files, err := aliyun.List(ctx, &model.Object{ID: parentID}, model.ListArgs{})
 		if err != nil {
 			return nil, err
 		}
@@ -174,7 +178,7 @@ func (d *AliyunTo115) walkFilesRecursively(ctx context.Context, aw *aliyundriveW
 		}
 		return result, nil
 	}
-	return walk("", aw.rootID)
+	return walk("", aliyun.GetRootId())
 }
 
 // fileWithPath wraps a model.Obj with its computed full path.

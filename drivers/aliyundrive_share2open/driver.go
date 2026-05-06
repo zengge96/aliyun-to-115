@@ -114,6 +114,12 @@ func (d *AliyundriveShare2Open) Init(ctx context.Context) error {
 	return nil
 }
 
+// GetRootId returns "" for share root (parent_file_id = "" means root in share API).
+// This overrides the embedded driver.RootID.GetRootId() which would return RootFolderID.
+func (d *AliyundriveShare2Open) GetRootId() string {
+	return ""
+}
+
 func (d *AliyundriveShare2Open) Drop(ctx context.Context) error {
 	if d.cron != nil { d.cron.Stop() }	
 	if d.cron2 != nil { d.cron2.Stop() }		

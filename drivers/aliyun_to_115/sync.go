@@ -82,17 +82,34 @@ func (d *AliyunTo115) doSync() {
 
 	var total, skipped, noLink, failed, synced, rapid, normal int64
 
-	for _, aliyun := range d.aliyunStorages {
+	fmt.Printf("[aliyun_to_115] ===== 本轮同步开始，共%v个阿里云存储 =====\n", len(d.aliyunStorages))
+	for i, aliyun := range d.aliyunStorages {
 		mountPath := ""
+		isShare := false
 		if s := aliyun.GetStorage(); s != nil {
 			mountPath = s.MountPath
 		}
+		if _, ok := aliyun.(*aliyundrive_share2open.AliyundriveShare2Open); ok {
+			isShare = true
+		}
+		fmt.Printf("[aliyun_to_115] [%d] 存储: mount=%s isShare=%v aliyunStorages类型=%T\n", i+1, mountPath, isShare, aliyun)
+
+		rootID := aliyun.GetRootId()
+		if _, ok := aliyun.(*aliyundrive_share2open.AliyundriveShare2Open); ok {
+			rootID = ""
+		}
+		fmt.Printf("[aliyun_to_115] [%d] walkFilesRecursively rootID=%q\n", i+1, rootID)
 		files, err := d.walkFilesRecursively(ctx, aliyun)
 		if err != nil {
 			fmt.Printf("[aliyun_to_115] walk error for %s: %v\n", mountPath, err)
 			continue
 		}
 		total += int64(len(files))
+		fmt.Printf("[aliyun_to_115] [%d] walkFilesRecursively 完成，文件数=%d\n", i+1, len(files))
+		if len(files) == 0 {
+			fmt.Printf("[aliyun_to_115] [%d] ⚠️ 文件数为0，跳过处理\n", i+1)
+			continue
+		}
 
 		for _, file := range files {
 			hashInfo := file.GetHash()
@@ -183,6 +200,7 @@ func (d *AliyunTo115) walkFilesRecursively(ctx context.Context, aliyun aliyunSto
 	if _, ok := aliyun.(*aliyundrive_share2open.AliyundriveShare2Open); ok {
 		rootID = ""
 	}
+	fmt.Printf("[aliyun_to_115] walkFilesRecursively 开始，GetRootId()=%q, rootID=%q\n", aliyun.GetRootId(), rootID)
 	return walk("", rootID)
 }
 

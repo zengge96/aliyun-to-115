@@ -12,10 +12,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/OpenListTeam/OpenList/v4/drivers/base"
+	"github.com/OpenListTeam/OpenList/v4/internal/conf"
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
 	"github.com/OpenListTeam/OpenList/v4/pkg/http_range"
 	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
 )
+
+func init() {
+	conf.Conf = conf.DefaultConfig("data")
+	base.InitClient()
+}
 
 func skipWithoutCookie(t *testing.T, path string) string {
 	data, err := os.ReadFile(path)

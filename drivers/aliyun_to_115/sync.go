@@ -80,10 +80,13 @@ func (d *AliyunTo115) doSync() {
 
 	ctx := context.Background()
 
+	// 每次sync时重新发现，支持动态注册的驱动（如加载顺序晚于aliyun_to_115初始化的Share2Open）
+	aliyunStorages := d.discoverAliyunStorages()
+
 	var total, skipped, noLink, failed, synced, rapid, normal int64
 
-	fmt.Printf("[aliyun_to_115] ===== 本轮同步开始，共%v个阿里云存储 =====\n", len(d.aliyunStorages))
-	for i, aliyun := range d.aliyunStorages {
+	fmt.Printf("[aliyun_to_115] ===== 本轮同步开始，共%v个阿里云存储 =====\n", len(aliyunStorages))
+	for i, aliyun := range aliyunStorages {
 		mountPath := ""
 		isShare := false
 		if s := aliyun.GetStorage(); s != nil {

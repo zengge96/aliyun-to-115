@@ -27,21 +27,17 @@ type AliyunTo115 struct {
 	p115 _115.Pan115
 	// aliased addition lives as a named field, not embedded, to avoid shadowing p115.Addition
 	Addition
-	p115Client     *sync115Client
-	aliyunStorages []aliyunStorage
-	syncLoopMu     sync.Mutex
-	syncRunning    bool
-	syncedCache    map[string]bool // SHA1 → true, persistent across sync cycles
+	p115Client  *sync115Client
+	syncLoopMu  sync.Mutex
+	syncRunning bool
+	syncedCache map[string]bool // SHA1 → true, persistent across sync cycles
 }
 
 func (d *AliyunTo115) Config() driver.Config { return config }
 func (d *AliyunTo115) GetAddition() driver.Additional { return &d.Addition }
 
 func (d *AliyunTo115) Init(ctx context.Context) error {
-	// 1. Discover all AliyunDriveOpen storages (self is not yet in storagesMap)
-	d.aliyunStorages = d.discoverAliyunStorages()
-
-	// 2. Copy Addition params to p115, then init it for normal List/Put/etc.
+	// 1. Copy Addition params to p115, then init it for normal List/Put/etc.
 	d.p115.Addition.Cookie = d.Open115Cookie
 	d.p115.Addition.QRCodeToken = d.QRCodeToken
 	d.p115.Addition.QRCodeSource = d.QRCodeSource
@@ -52,7 +48,7 @@ func (d *AliyunTo115) Init(ctx context.Context) error {
 		return err
 	}
 
-	// 3. Init 115 upload client for sync task
+	// 2. Init 115 upload client for sync task
 	if d.Open115Cookie == "" {
 		return errors.New("open115_cookie is required")
 	}
@@ -62,10 +58,10 @@ func (d *AliyunTo115) Init(ctx context.Context) error {
 	}
 	d.p115Client = p115Client
 
-	// 4. Init synced cache
+	// 3. Init synced cache
 	d.syncedCache = make(map[string]bool)
 
-	// 5. Start background sync loop
+	// 4. Start background sync loop
 	go d.doSyncLoop()
 	return nil
 }

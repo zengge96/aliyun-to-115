@@ -281,8 +281,7 @@ func TestSync115Client_UploadTo115(t *testing.T) {
 // =============================================================================
 func TestSyncDedupCache(t *testing.T) {
 	d := &AliyunTo115{
-		syncRunning:    false,
-		aliyunStorages: nil, // empty — no files to sync
+		syncRunning: false,
 		syncedCache: map[string]bool{
 			"already_synced_sha1": true,
 		},

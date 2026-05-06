@@ -71,17 +71,6 @@ func (d *AliyundriveOpen) Drop(ctx context.Context) error {
 	return nil
 }
 
-// GetRoot implements the driver.GetRooter interface to properly set up the root object
-func (d *AliyundriveOpen) GetRoot(ctx context.Context) (model.Obj, error) {
-	return &model.Object{
-		ID:       d.RootFolderID,
-		Path:     "/",
-		Name:     "root",
-		Modified: d.Modified,
-		IsFolder: true,
-	}, nil
-}
-
 func (d *AliyundriveOpen) List(ctx context.Context, dir model.Obj, args model.ListArgs) ([]model.Obj, error) {
 	files, err := d.getFiles(ctx, dir.GetID())
 	if err != nil {

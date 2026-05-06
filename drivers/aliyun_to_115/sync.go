@@ -98,9 +98,6 @@ func (d *AliyunTo115) doSync() {
 		fmt.Printf("[aliyun_to_115] [%d] 存储: mount=%s isShare=%v aliyunStorages类型=%T\n", i+1, mountPath, isShare, aliyun)
 
 		rootID := aliyun.GetRootId()
-		if _, ok := aliyun.(*aliyundrive_share2open.AliyundriveShare2Open); ok {
-			rootID = ""
-		}
 		fmt.Printf("[aliyun_to_115] [%d] walkFilesRecursively rootID=%q\n", i+1, rootID)
 		files, err := d.walkFilesRecursively(ctx, aliyun)
 		if err != nil {
@@ -200,26 +197,8 @@ func (d *AliyunTo115) walkFilesRecursively(ctx context.Context, aliyun aliyunSto
 		return result, nil
 	}
 	rootID := aliyun.GetRootId()
-	if _, ok := aliyun.(*aliyundrive_share2open.AliyundriveShare2Open); ok {
-		rootID = ""
-	}
+
 	fmt.Printf("[aliyun_to_115] walkFilesRecursively 开始，GetRootId()=%q, rootID=%q\n", aliyun.GetRootId(), rootID)
-	// Diagnose: try both "" and "root" for Share2Open to find which parent_file_id works
-	if _, ok := aliyun.(*aliyundrive_share2open.AliyundriveShare2Open); ok {
-		fmt.Printf("[aliyun_to_115] Share2Open诊断: 先尝试rootID=\"\"\n")
-		result, err := walk("", "")
-		if err != nil {
-			fmt.Printf("[aliyun_to_115] Share2Open诊断: rootID=\"\" 失败: %v\n", err)
-			fmt.Printf("[aliyun_to_115] Share2Open诊断: 再尝试rootID=\"root\"\n")
-			result2, err2 := walk("", "root")
-			if err2 != nil {
-				fmt.Printf("[aliyun_to_115] Share2Open诊断: rootID=\"root\" 也失败: %v\n", err2)
-				return nil, err
-			}
-			return result2, nil
-		}
-		return result, nil
-	}
 	return walk("", rootID)
 }
 

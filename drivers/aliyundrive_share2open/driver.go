@@ -45,6 +45,10 @@ func (d *AliyundriveShare2Open) GetAddition() driver.Additional {
 	return &d.Addition
 }
 
+func (d *AliyundriveShare2Open) IsShareDriver() bool {
+	return true
+}
+
 func (d *AliyundriveShare2Open) Init(ctx context.Context) error {
 	err := d.refreshToken()
 	if err != nil {
@@ -112,6 +116,8 @@ func (d *AliyundriveShare2Open) Init(ctx context.Context) error {
 	}
     })
 	return nil
+}
+
 func (d *AliyundriveShare2Open) Drop(ctx context.Context) error {
 	if d.cron != nil { d.cron.Stop() }	
 	if d.cron2 != nil { d.cron2.Stop() }		

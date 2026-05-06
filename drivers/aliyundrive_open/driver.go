@@ -34,6 +34,10 @@ func (d *AliyundriveOpen) GetAddition() driver.Additional {
 	return &d.Addition
 }
 
+func (d *AliyundriveOpen) IsShareDriver() bool {
+	return false
+}
+
 func (d *AliyundriveOpen) Init(ctx context.Context) error {
 	d.limiter = getLimiterForUser(globalLimiterUserID) // First create a globally shared limiter to limit the initial requests.
 	if d.LIVPDownloadFormat == "" {

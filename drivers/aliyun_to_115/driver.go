@@ -18,6 +18,7 @@ type aliyunStorage interface {
 	List(ctx context.Context, dir model.Obj, args model.ListArgs) ([]model.Obj, error)
 	Link(ctx context.Context, file model.Obj, args model.LinkArgs) (*model.Link, error)
 	GetRootId() string
+	IsShareDriver() bool
 	GetStorage() *model.Storage
 }
 

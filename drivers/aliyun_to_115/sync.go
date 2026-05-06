@@ -178,7 +178,13 @@ func (d *AliyunTo115) walkFilesRecursively(ctx context.Context, aliyun aliyunSto
 		}
 		return result, nil
 	}
-	return walk("", aliyun.GetRootId())
+	// For Share2Open, GetRootId() returns "root" which is invalid for List().
+	// Use "" (empty) so List() sets parent_file_id="" to get root files.
+	rootID := ""
+	if !aliyun.IsShareDriver() {
+		rootID = aliyun.GetRootId()
+	}
+	return walk("", rootID)
 }
 
 // fileWithPath wraps a model.Obj with its computed full path.

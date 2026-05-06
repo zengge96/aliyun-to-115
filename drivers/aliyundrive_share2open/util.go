@@ -167,7 +167,7 @@ func (d *AliyundriveShare2Open) getFiles(fileId string) ([]File, error) {
 		if err != nil {
 			return nil, err
 		}
-		log.Debugf("aliyundrive share get files: %s", res.String())
+		fmt.Printf("aliyundrive share get files: %s\n", res.String())
 		if e.Code != "" {
 			if utils.SliceContains([]string{"AccessTokenInvalid", "AccessTokenExpired", "I400JD"}, e.Code) || e.Code == "ShareLinkTokenInvalid" {
 				err = d.getShareToken()

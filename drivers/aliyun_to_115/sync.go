@@ -114,13 +114,18 @@ func (d *AliyunTo115) doSync() {
 		for _, file := range files {
 			hashInfo := file.GetHash()
 			sha1Str := hashInfo.GetHash(utils.SHA1)
-			if sha1Str == "" {
-				continue
+			// Check synced cache (global dedup across all aliyun storages)
+			// For files with SHA1: use SHA1 as key
+			// For files without SHA1 (Share2Open): use parent_path + name + size as key
+			var cacheKey string
+			if sha1Str != "" {
+				cacheKey = sha1Str
+			} else {
+				cacheKey = fmt.Sprintf("noprefix:%s:%d", file.GetPath(), file.GetSize())
+				fmt.Printf("[aliyun_to_115] file without sha1, using alt dedup key: %s\n", cacheKey)
 			}
-
-			// Check synced cache (global SHA1 dedup across all aliyun storages)
 			d.syncLoopMu.Lock()
-			if d.syncedCache[sha1Str] {
+			if d.syncedCache[cacheKey] {
 				d.syncLoopMu.Unlock()
 				skipped++
 				continue
@@ -159,7 +164,7 @@ func (d *AliyunTo115) doSync() {
 
 			// Mark as synced
 			d.syncLoopMu.Lock()
-			d.syncedCache[sha1Str] = true
+			d.syncedCache[cacheKey] = true
 			d.syncLoopMu.Unlock()
 			synced++
 		}

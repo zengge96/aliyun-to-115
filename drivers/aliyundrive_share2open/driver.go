@@ -171,7 +171,7 @@ func (d *AliyundriveShare2Open) Link(ctx context.Context, file model.Obj, args m
 		}, nil
 	} 
 
-	//time.Sleep(2 * 1000 * time.Millisecond)
+	time.Sleep(1 * 1000 * time.Millisecond)
 	DownloadUrl, err := d.GetmyLink(ctx, new_file_id, file_id, file_name)
 	d.Remove(ctx, new_file_id)
 	if err != nil {

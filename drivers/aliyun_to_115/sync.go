@@ -128,7 +128,7 @@ func (d *AliyunTo115) doSync() {
 
 			var hashVal string
 			if driver, ok := aliyun.(*aliyundrive_share2open.AliyundriveShare2Open); ok {
-				hashVal = driver.GetHash(ctx, file, model.LinkArgs{})
+				hashVal = driver.GetHash(ctx, file.Obj, model.LinkArgs{})
 				fmt.Printf("[aliyun_to_115] hash值: %s\n", hashVal)
 			}
 			if obj, ok := file.Obj.(*model.Object); ok && hashVal != "" {

@@ -187,12 +187,9 @@ func (d *AliyundriveShare2Open) Link(ctx context.Context, file model.Obj, args m
 	}, nil
 }
 
-func (d *AliyundriveShare2Open) GetHash(ctx context.Context, file model.Obj, args model.LinkArgs) (string) {
+func (d *AliyundriveShare2Open) GetHash(ctx context.Context, file model.Obj, args model.LinkArgs) string {
     fileId := file.GetID() 
-    _, _ := d.Link(ctx, file, args)
-    if err != nil {
-        return ""
-    }
+    _, _ := d.Link(ctx, file, args) 
     if d.Hash_dict != nil {
         if existedHash, ok := d.Hash_dict[fileId]; ok {
             return existedHash

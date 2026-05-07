@@ -222,7 +222,9 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, aliyun aliyunStorag
 	}
 
 	// 如果你希望在 115 中物理保留文件，请注释掉下面这一行
-	//_ = d.p115Client.removeFrom115(ctx, result)
+	if d.DeleteAfterSync {
+		_ = d.p115Client.removeFrom115(ctx, result)
+	}
 
 	d.syncLoopMu.Lock()
 	d.syncedCache[cacheKey] = true

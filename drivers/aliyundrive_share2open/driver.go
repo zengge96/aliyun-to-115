@@ -34,6 +34,7 @@ type AliyundriveShare2Open struct {
 	AccessTokenOpen  string
 	CopyFiles        map[string]string
 	DownloadUrl_dict map[string]string
+	Hash_dict map[string]string
 	FileID_Link		 map[string]string
 }
 
@@ -59,13 +60,14 @@ func (d *AliyundriveShare2Open) Init(ctx context.Context) error {
 		return err
 	}
 	var siteMap map[string]string
-    	var downloadurlmap map[string]string
+    var downloadurlmap map[string]string
 	var fileid_link map[string]string
-    	downloadurlmap = make(map[string]string)
+    downloadurlmap = make(map[string]string)
 	fileid_link = make(map[string]string)
 	siteMap = make(map[string]string)
 	d.CopyFiles = siteMap
 	d.DownloadUrl_dict = downloadurlmap
+	d.Hash_dict = make(map[string]string)
 	d.FileID_Link = fileid_link
 
 	//res, err := d.request("https://api.aliyundrive.com/v2/user/get", http.MethodPost, nil)
@@ -107,6 +109,7 @@ func (d *AliyundriveShare2Open) Init(ctx context.Context) error {
 	if len(d.FileID_Link) > 0 {
 		fmt.Println(time.Now().Format("01-02-2006 15:04:05")," 清空缓存下载链接: ", d.MountPath) //d.ShareId) //d.MyAliDriveId)
 		d.DownloadUrl_dict = make(map[string]string)
+		d.Hash_dict = make(map[string]string)
 		d.FileID_Link = make(map[string]string)
 		d.CopyFiles = make(map[string]string)
 	}
@@ -182,6 +185,20 @@ func (d *AliyundriveShare2Open) Link(ctx context.Context, file model.Obj, args m
 		},
 		URL: DownloadUrl,
 	}, nil
+}
+
+func (d *AliyundriveShare2Open) GetHash(ctx context.Context, file model.Obj, args model.LinkArgs) (string) {
+    fileId := file.GetID() 
+    _, _ := d.Link(ctx, file, args)
+    if err != nil {
+        return ""
+    }
+    if d.Hash_dict != nil {
+        if existedHash, ok := d.Hash_dict[fileId]; ok {
+            return existedHash
+        }
+    }
+    return ""
 }
 
 func (d *AliyundriveShare2Open) Copy2Myali(ctx context.Context, src_driveid string, file_id string, file_name string) (string, error) {
@@ -283,6 +300,7 @@ func (d *AliyundriveShare2Open) GetmyLink(ctx context.Context, file_id string, f
 
         if err == nil {
             d.DownloadUrl_dict[file_id] = utils.Json.Get(res, "url").ToString()
+			d.Hash_dict[file_id] = utils.Json.Get(res, "content_hash").ToString()
 			fmt.Println("文件: ",file_name,"  新增下载直链: ", d.DownloadUrl_dict[file_id])
 			fmt.Println(time.Now().Format("01-02-2006 15:04:05")," 已成功缓存了",len(d.DownloadUrl_dict),"个文件")
 			fmt.Printf("getDownloadUrl: %s\n", string(res))

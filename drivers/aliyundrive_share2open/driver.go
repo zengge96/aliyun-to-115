@@ -323,6 +323,7 @@ func (d *AliyundriveShare2Open) Purge_temp_folder(ctx context.Context) error {
 		fmt.Println(delete_files.Array())
 		for _,b := range delete_files.Array() {
 			d.Remove(ctx, b.String()) 
+		}
 	}
 	return nil
 }

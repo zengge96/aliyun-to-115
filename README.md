@@ -58,7 +58,7 @@
 如果需要重新同步所有文件（例如更换了源存储内容），可以清除同步缓存记录：
 
 ```bash
-openlist cache clear <storage_id>
+openlist cache clear
 ```
 
 这会删除该存储在数据库中的同步记录（`aliyun_sync_cache` 表），重启后内存 cache 也会清空，所有文件会被重新同步。

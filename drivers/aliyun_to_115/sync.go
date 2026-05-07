@@ -176,11 +176,12 @@ func (d *AliyunTo115) walkAndSync(ctx context.Context, aliyun aliyunStorage, cur
 }
 
 func (d *AliyunTo115) processSingleFile(ctx context.Context, aliyun aliyunStorage, f model.Obj, fullPath string, p115DirID string, stats *syncStats) {
-	cacheKey := f.GetID()
+	mountPath := d.GetStorage().MountPath
+	cacheKey := mountPath + "/" + f.GetID()
 	hashInfo := f.GetHash()
 	sha1Str := hashInfo.GetHash(utils.SHA1)
 	if sha1Str != "" {
-		cacheKey = sha1Str
+		cacheKey = mountPath + "/" + sha1Str
 	}
 
 	d.syncLoopMu.Lock()

@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	_115 "github.com/OpenListTeam/OpenList/v4/drivers/115"
@@ -28,9 +29,12 @@ func newSync115Client(cookie string) (*sync115Client, error) {
 	return &sync115Client{p115: p115}, nil
 }
 
-// getOrCreateDir checks if a directory exists under parentID; if not, creates it.
+// getOrCreateDir 检查文件夹是否存在，不存在则创建，返回文件夹 ID
 func (c *sync115Client) getOrCreateDir(ctx context.Context, parentID string, dirName string) (string, error) {
-	// 1. List current directory to find if folder already exists
+	if dirName == "" || dirName == "/" {
+		return parentID, nil
+	}
+	// 1. 列出当前目录检查是否已存在
 	objs, err := c.p115.List(ctx, &model.Object{ID: parentID}, model.ListArgs{})
 	if err == nil {
 		for _, obj := range objs {
@@ -39,16 +43,14 @@ func (c *sync115Client) getOrCreateDir(ctx context.Context, parentID string, dir
 			}
 		}
 	}
-
-	// 2. Not found, create it
+	// 2. 创建新目录
 	newDir, err := c.p115.MakeDir(ctx, &model.Object{ID: parentID}, dirName)
 	if err != nil {
-		return "", fmt.Errorf("failed to create 115 dir [%s]: %w", dirName, err)
+		return "", fmt.Errorf("failed to create dir [%s] in [%s]: %w", dirName, parentID, err)
 	}
 	return newDir.GetID(), nil
 }
 
-// uploadTo115 uploads stream to a specific 115 directory ID.
 func (c *sync115Client) uploadTo115(ctx context.Context, stream model.FileStreamer, dstDirID string) (model.Obj, error) {
 	dstDir := &model.Object{ID: dstDirID}
 	up := func(progress float64) {}
@@ -106,22 +108,39 @@ func (d *AliyunTo115) doSync() {
 	aliyunStorages := d.discoverAliyunStorages()
 	stats := &syncStats{}
 
-	// Initial 115 Root Folder from user config
-	targetRootID := d.RootFolderID
-	if targetRootID == "" {
-		targetRootID = "0"
+	// 用户配置的目标 115 根目录
+	configRootID := d.RootFolderID
+	if configRootID == "" {
+		configRootID = "0"
 	}
 
-	fmt.Printf("[aliyun_to_115] ===== 同步开始，目标115根ID: %s =====\n", targetRootID)
-
 	for _, aliyun := range aliyunStorages {
+		storage := aliyun.GetStorage()
 		mountPath := "/"
-		if s := aliyun.GetStorage(); s != nil {
-			mountPath = s.MountPath + "/"
+		if storage != nil {
+			mountPath = storage.MountPath
 		}
-		aliRootID := aliyun.GetRootId()
+		
+		fmt.Printf("[aliyun_to_115] 正在处理阿里存储: %s\n", mountPath)
 
-		err := d.walkAndSync(ctx, aliyun, mountPath, aliRootID, targetRootID, stats)
+		// 1. 在 115 上根据 MountPath 创建层级
+		// 例如 /aliyun/drive 会在 115 根目录下依次创建 aliyun 和 drive 文件夹
+		segments := strings.Split(strings.Trim(mountPath, "/"), "/")
+		current115ParentID := configRootID
+		var err error
+		for _, seg := range segments {
+			if seg == "" { continue }
+			current115ParentID, err = d.p115Client.getOrCreateDir(ctx, current115ParentID, seg)
+			if err != nil {
+				fmt.Printf("[aliyun_to_115] 创建挂载路径映射失败: %v\n", err)
+				break
+			}
+		}
+		if err != nil { continue }
+
+		// 2. 开始递归遍历阿里盘并同步
+		aliRootID := aliyun.GetRootId()
+		err = d.walkAndSync(ctx, aliyun, mountPath+"/", aliRootID, current115ParentID, stats)
 		if err != nil {
 			fmt.Printf("[aliyun_to_115] walk error for %s: %v\n", mountPath, err)
 		}
@@ -139,17 +158,15 @@ func (d *AliyunTo115) walkAndSync(ctx context.Context, aliyun aliyunStorage, cur
 
 	for _, f := range files {
 		if f.IsDir() {
-			// 1. Maintain directory structure: get or create folder on 115
+			// 同步创建目录
 			subP115ID, err := d.p115Client.getOrCreateDir(ctx, p115ParentID, f.GetName())
 			if err != nil {
-				fmt.Printf("[aliyun_to_115] Skip Dir: %s, error: %v\n", f.GetName(), err)
+				fmt.Printf("[aliyun_to_115] 无法在 115 创建目录: %s, 错误: %v\n", f.GetName(), err)
 				continue
 			}
-			// 2. Recurse
 			subPath := currentPath + f.GetName() + "/"
 			_ = d.walkAndSync(ctx, aliyun, subPath, f.GetID(), subP115ID, stats)
 		} else {
-			// 3. Process File
 			stats.total++
 			fullPath := currentPath + f.GetName()
 			d.processSingleFile(ctx, aliyun, f, fullPath, p115ParentID, stats)
@@ -186,27 +203,26 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, aliyun aliyunStorag
 
 	stream := newUrlFileStreamer(f.GetName(), f.GetSize(), sha1Str, link.URL)
 	start := time.Now()
-	// Upload to the mapped 115 directory
+	// 上传到对应的 115 目录 ID
 	result, uploadErr := d.p115Client.uploadTo115(ctx, stream, p115DirID)
 	elapsed := time.Since(start)
 
 	if uploadErr != nil || result == nil {
-		fmt.Printf("[aliyun_to_115] upload failed: %s : %v\n", fullPath, uploadErr)
+		fmt.Printf("[aliyun_to_115] 上传失败: %s : %v\n", fullPath, uploadErr)
 		stats.failed++
 		return
 	}
 
 	if stream.rapidUpload {
-		fmt.Printf("[aliyun_to_115] ⚡ 秒传成功: %s -> 115(%s) [%v]\n", fullPath, p115DirID, elapsed)
+		fmt.Printf("[aliyun_to_115] ⚡ 秒传成功: %s -> 115目录(%s) [%v]\n", fullPath, p115DirID, elapsed)
 		stats.rapid++
 	} else {
-		fmt.Printf("[aliyun_to_115] 📤 正常上传: %s -> 115(%s) [%v]\n", fullPath, p115DirID, elapsed)
+		fmt.Printf("[aliyun_to_115] 📤 正常上传: %s -> 115目录(%s) [%v]\n", fullPath, p115DirID, elapsed)
 		stats.normal++
 	}
 
-	// Important: If you want to KEEP files in 115, comment out the line below. 
-	// Currently it deletes the file after upload (usually to just 'register' the SHA1).
-	//_ = d.p115Client.removeFrom115(ctx, result)
+	// 如果你希望在 115 中物理保留文件，请注释掉下面这一行
+	_ = d.p115Client.removeFrom115(ctx, result)
 
 	d.syncLoopMu.Lock()
 	d.syncedCache[cacheKey] = true

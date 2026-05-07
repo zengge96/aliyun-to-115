@@ -22,9 +22,7 @@ type aliyunStorage interface {
 }
 
 type AliyunTo115 struct {
-	// p115 provides List/Put/Link/etc.
 	p115 _115.Pan115
-	// Addition lives as a named field
 	Addition
 	p115Client  *sync115Client
 	syncLoopMu  sync.Mutex
@@ -36,7 +34,6 @@ func (d *AliyunTo115) Config() driver.Config { return config }
 func (d *AliyunTo115) GetAddition() driver.Additional { return &d.Addition }
 
 func (d *AliyunTo115) Init(ctx context.Context) error {
-	// 1. Copy Addition params to p115
 	d.p115.Addition.Cookie = d.Open115Cookie
 	d.p115.Addition.QRCodeToken = d.QRCodeToken
 	d.p115.Addition.QRCodeSource = d.QRCodeSource
@@ -47,7 +44,6 @@ func (d *AliyunTo115) Init(ctx context.Context) error {
 		return err
 	}
 
-	// 2. Init 115 upload client for sync task
 	if d.Open115Cookie == "" {
 		return errors.New("open115_cookie is required")
 	}
@@ -56,11 +52,8 @@ func (d *AliyunTo115) Init(ctx context.Context) error {
 		return err
 	}
 	d.p115Client = p115Client
-
-	// 3. Init synced cache
 	d.syncedCache = make(map[string]bool)
 
-	// 4. Start background sync loop
 	go d.doSyncLoop()
 	return nil
 }
@@ -81,7 +74,6 @@ func (d *AliyunTo115) discoverAliyunStorages() []aliyunStorage {
 			storages = append(storages, v)
 		case *aliyundrive_share2open.AliyundriveShare2Open:
 			storages = append(storages, v)
-		default:
 		}
 	}
 	return storages

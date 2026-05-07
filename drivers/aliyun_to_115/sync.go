@@ -196,13 +196,11 @@ func (d *AliyunTo115) walkFilesRecursively(ctx context.Context, aliyun aliyunSto
 				result = append(result, subFiles...)
 			} else {
 				var hashVal string
-				if driver, ok := aliyun.(*AliyundriveShare2Open); ok {
+				if driver, ok := aliyun.(*aliyundrive_share2open.AliyundriveShare2Open); ok {
 					hashVal = driver.GetHash(ctx, f, model.LinkArgs{})
 				}
 				if obj, ok := f.(*model.Object); ok && hashVal != "" {
-					obj.HashInfo = utils.HashInfo{
-						"sha1": hashVal,
-					}
+					obj.HashInfo = utils.NewHashInfo(utils.SHA1, hashVal)
 				}
 
 				fw := &fileWithPath{Obj: f, fullPath: parentPath + f.GetName()}

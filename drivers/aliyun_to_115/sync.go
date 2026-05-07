@@ -16,7 +16,6 @@ import (
 	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
 )
 
-// sync115Client wraps _115.Pan115 for Aliyun-115 sync uploads.
 type sync115Client struct {
 	p115 *_115.Pan115
 }
@@ -30,26 +29,43 @@ func newSync115Client(cookie string) (*sync115Client, error) {
 	return &sync115Client{p115: p115}, nil
 }
 
-// uploadTo115 uploads stream to 115 root directory (ID "0") and returns the uploaded file.
-func (c *sync115Client) uploadTo115(ctx context.Context, stream model.FileStreamer) (model.Obj, error) {
-	dstDir := &model.Object{ID: "0"}
+// getOrCreateDir checks if a directory exists under parentID; if not, creates it.
+func (c *sync115Client) getOrCreateDir(ctx context.Context, parentID string, dirName string) (string, error) {
+	// 1. List current directory to find if folder already exists
+	objs, err := c.p115.List(ctx, &model.Object{ID: parentID}, model.ListArgs{})
+	if err == nil {
+		for _, obj := range objs {
+			if obj.IsDir() && obj.GetName() == dirName {
+				return obj.GetID(), nil
+			}
+		}
+	}
+
+	// 2. Not found, create it
+	newDir, err := c.p115.MakeDir(ctx, &model.Object{ID: parentID}, dirName)
+	if err != nil {
+		return "", fmt.Errorf("failed to create 115 dir [%s]: %w", dirName, err)
+	}
+	return newDir.GetID(), nil
+}
+
+// uploadTo115 uploads stream to a specific 115 directory ID.
+func (c *sync115Client) uploadTo115(ctx context.Context, stream model.FileStreamer, dstDirID string) (model.Obj, error) {
+	dstDir := &model.Object{ID: dstDirID}
 	up := func(progress float64) {}
 	return c.p115.Put(ctx, dstDir, stream, up)
 }
 
-// removeFrom115 deletes a file from 115 by its ID.
 func (c *sync115Client) removeFrom115(ctx context.Context, file model.Obj) error {
 	return c.p115.Remove(ctx, file)
 }
 
-// Drop cleans up resources.
 func (c *sync115Client) Drop() {
 	if c.p115 != nil {
 		c.p115.Drop(context.Background())
 	}
 }
 
-// doSyncLoop runs periodic sync scans.
 func (d *AliyunTo115) doSyncLoop() {
 	interval := time.Duration(d.SyncInterval) * time.Second
 	if interval <= 0 {
@@ -62,7 +78,6 @@ func (d *AliyunTo115) doSyncLoop() {
 	}
 }
 
-// syncStats 用于统计同步结果
 type syncStats struct {
 	total   int64
 	skipped int64
@@ -73,7 +88,6 @@ type syncStats struct {
 	normal  int64
 }
 
-// doSync 现在会一边遍历一边执行同步
 func (d *AliyunTo115) doSync() {
 	d.syncLoopMu.Lock()
 	if d.syncRunning {
@@ -93,63 +107,59 @@ func (d *AliyunTo115) doSync() {
 	aliyunStorages := d.discoverAliyunStorages()
 	stats := &syncStats{}
 
-	fmt.Printf("[aliyun_to_115] ===== 本轮同步开始，共%v个阿里云存储 =====\n", len(aliyunStorages))
+	// Initial 115 Root Folder from user config
+	targetRootID := d.RootFolderID
+	if targetRootID == "" {
+		targetRootID = "0"
+	}
+
+	fmt.Printf("[aliyun_to_115] ===== 同步开始，目标115根ID: %s =====\n", targetRootID)
 
 	for _, aliyun := range aliyunStorages {
 		mountPath := "/"
 		if s := aliyun.GetStorage(); s != nil {
 			mountPath = s.MountPath + "/"
 		}
-		rootID := aliyun.GetRootId()
+		aliRootID := aliyun.GetRootId()
 
-		// 开始边走边同步
-		err := d.walkAndSync(ctx, aliyun, mountPath, rootID, stats)
+		err := d.walkAndSync(ctx, aliyun, mountPath, aliRootID, targetRootID, stats)
 		if err != nil {
 			fmt.Printf("[aliyun_to_115] walk error for %s: %v\n", mountPath, err)
 		}
 	}
 
-	fmt.Printf("[aliyun_to_115] ===== 本轮完成: 发现%v个 / 跳过%v个 / 秒传%v个 / 正常%v个 / 失败%v个 / 无链接%v个 =====\n",
-		stats.total, stats.skipped, stats.rapid, stats.normal, stats.failed, stats.noLink)
+	fmt.Printf("[aliyun_to_115] ===== 同步完成: 发现%v / 跳过%v / 秒传%v / 正常%v / 失败%v =====\n",
+		stats.total, stats.skipped, stats.rapid, stats.normal, stats.failed)
 }
 
-// walkAndSync 递归遍历并直接处理文件
-func (d *AliyunTo115) walkAndSync(ctx context.Context, aliyun aliyunStorage, rootPath, rootID string, stats *syncStats) error {
-	visited := make(map[string]bool)
-
-	var walk func(parentPath, parentID string) error
-	walk = func(parentPath, parentID string) error {
-		if visited[parentID] {
-			return nil
-		}
-		visited[parentID] = true
-
-		files, err := aliyun.List(ctx, &model.Object{ID: parentID}, model.ListArgs{})
-		if err != nil {
-			return err
-		}
-
-		for _, f := range files {
-			if f.IsDir() {
-				// 递归进入子目录
-				subPath := parentPath + f.GetName() + string(os.PathSeparator)
-				_ = walk(subPath, f.GetID())
-			} else {
-				// 发现文件，立即同步
-				stats.total++
-				fullPath := parentPath + f.GetName()
-				d.processSingleFile(ctx, aliyun, f, fullPath, stats)
-			}
-		}
-		return nil
+func (d *AliyunTo115) walkAndSync(ctx context.Context, aliyun aliyunStorage, currentPath, aliParentID, p115ParentID string, stats *syncStats) error {
+	files, err := aliyun.List(ctx, &model.Object{ID: aliParentID}, model.ListArgs{})
+	if err != nil {
+		return err
 	}
 
-	return walk(rootPath, rootID)
+	for _, f := range files {
+		if f.IsDir() {
+			// 1. Maintain directory structure: get or create folder on 115
+			subP115ID, err := d.p115Client.getOrCreateDir(ctx, p115ParentID, f.GetName())
+			if err != nil {
+				fmt.Printf("[aliyun_to_115] Skip Dir: %s, error: %v\n", f.GetName(), err)
+				continue
+			}
+			// 2. Recurse
+			subPath := currentPath + f.GetName() + "/"
+			_ = d.walkAndSync(ctx, aliyun, subPath, f.GetID(), subP115ID, stats)
+		} else {
+			// 3. Process File
+			stats.total++
+			fullPath := currentPath + f.GetName()
+			d.processSingleFile(ctx, aliyun, f, fullPath, p115ParentID, stats)
+		}
+	}
+	return nil
 }
 
-// processSingleFile 封装了单个文件的同步逻辑
-func (d *AliyunTo115) processSingleFile(ctx context.Context, aliyun aliyunStorage, f model.Obj, fullPath string, stats *syncStats) {
-	// 1. 确定 Cache Key (优先使用 SHA1)
+func (d *AliyunTo115) processSingleFile(ctx context.Context, aliyun aliyunStorage, f model.Obj, fullPath string, p115DirID string, stats *syncStats) {
 	cacheKey := f.GetID()
 	hashInfo := f.GetHash()
 	sha1Str := hashInfo.GetHash(utils.SHA1)
@@ -157,7 +167,6 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, aliyun aliyunStorag
 		cacheKey = sha1Str
 	}
 
-	// 2. 检查缓存
 	d.syncLoopMu.Lock()
 	if d.syncedCache[cacheKey] {
 		d.syncLoopMu.Unlock()
@@ -166,24 +175,20 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, aliyun aliyunStorag
 	}
 	d.syncLoopMu.Unlock()
 
-	// 3. 获取下载链接
 	link, err := aliyun.Link(ctx, f, model.LinkArgs{})
-	
-	// 特殊驱动处理 (Share2Open)
 	if driver, ok := aliyun.(*aliyundrive_share2open.AliyundriveShare2Open); ok {
 		sha1Str = driver.GetHash(ctx, f, model.LinkArgs{})
 	}
 
 	if err != nil || link == nil || link.URL == "" {
-		fmt.Printf("[aliyun_to_115] no download link: %s (sha1=%s): %v\n", fullPath, sha1Str, err)
 		stats.noLink++
 		return
 	}
 
-	// 4. 执行上传到 115
 	stream := newUrlFileStreamer(f.GetName(), f.GetSize(), sha1Str, link.URL)
 	start := time.Now()
-	result, uploadErr := d.p115Client.uploadTo115(ctx, stream)
+	// Upload to the mapped 115 directory
+	result, uploadErr := d.p115Client.uploadTo115(ctx, stream, p115DirID)
 	elapsed := time.Since(start)
 
 	if uploadErr != nil || result == nil {
@@ -192,34 +197,24 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, aliyun aliyunStorag
 		return
 	}
 
-	// 5. 打印结果
 	if stream.rapidUpload {
-		fmt.Printf("[aliyun_to_115] ⚡ 秒传成功: %s (%s, %v)\n", fullPath, formatSize(f.GetSize()), elapsed)
+		fmt.Printf("[aliyun_to_115] ⚡ 秒传成功: %s -> 115(%s) [%v]\n", fullPath, p115DirID, elapsed)
 		stats.rapid++
 	} else {
-		fmt.Printf("[aliyun_to_115] 📤 正常上传: %s (%s, %v)\n", fullPath, formatSize(f.GetSize()), elapsed)
+		fmt.Printf("[aliyun_to_115] 📤 正常上传: %s -> 115(%s) [%v]\n", fullPath, p115DirID, elapsed)
 		stats.normal++
 	}
 
-	// 6. 从 115 删除文件（仅保留 SHA1 预注册）
+	// Important: If you want to KEEP files in 115, comment out the line below. 
+	// Currently it deletes the file after upload (usually to just 'register' the SHA1).
 	_ = d.p115Client.removeFrom115(ctx, result)
 
-	// 7. 更新缓存
 	d.syncLoopMu.Lock()
 	d.syncedCache[cacheKey] = true
 	d.syncLoopMu.Unlock()
 	stats.synced++
 }
 
-// fileWithPath wraps a model.Obj with its computed full path.
-type fileWithPath struct {
-	model.Obj
-	fullPath string
-}
-
-func (f *fileWithPath) GetPath() string { return f.fullPath }
-
-// urlFileStreamer implements model.FileStreamer for a URL download.
 type urlFileStreamer struct {
 	name     string
 	path     string
@@ -285,7 +280,6 @@ func (f *urlFileStreamer) RangeRead(ra http_range.Range) (io.Reader, error) {
 }
 
 func (f *urlFileStreamer) CacheFullAndWriter(up *model.UpdateProgress, w io.Writer) (model.File, error) {
-	log.Printf("[DEBUG] CacheFullAndWriter called: size=%d", f.size)
 	tmpF, err := os.CreateTemp(os.TempDir(), "urlstream-*")
 	if err != nil {
 		return nil, fmt.Errorf("CreateTemp failed: %w", err)
@@ -315,7 +309,6 @@ func (f *urlFileStreamer) CacheFullAndWriter(up *model.UpdateProgress, w io.Writ
 	}
 	tmpF.Seek(0, io.SeekStart)
 	fc := &model.FileCloser{File: tmpF, Closer: tmpF}
-	err = nil // clear error so defer doesn't remove the file
 	return fc, nil
 }
 
@@ -330,10 +323,10 @@ func formatSize(size int64) string {
 	for floatSize := float64(size); floatSize >= unit; floatSize /= unit {
 		exp++
 	}
-	div := float64(unit)
-	for i := 0; i < exp-1; i++ {
+	suffix := "BKMGTPE"[exp : exp+1]
+	div := 1.0
+	for i := 0; i < exp; i++ {
 		div *= unit
 	}
-	suffix := "BKMGTPE"[exp : exp+1]
 	return fmt.Sprintf("%.1f %sB", float64(size)/div, suffix)
 }

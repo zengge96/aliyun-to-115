@@ -86,12 +86,13 @@ func (d *AliyunTo115) doSync() {
 	var total, skipped, noLink, failed, synced, rapid, normal int64
 
 	fmt.Printf("[aliyun_to_115] ===== 本轮同步开始，共%v个阿里云存储 =====\n", len(aliyunStorages))
-	for aliyun := range aliyunStorages {
+	for _, aliyun := range aliyunStorages {
 		mountPath := ""
 		if s := aliyun.GetStorage(); s != nil {
 			mountPath = s.MountPath
 		}
-		
+
+		rootID := aliyun.GetRootId()
 		files, err := d.walkFilesRecursively(ctx, aliyun)
 		if err != nil {
 			fmt.Printf("[aliyun_to_115] walk error for %s: %v\n", mountPath, err)

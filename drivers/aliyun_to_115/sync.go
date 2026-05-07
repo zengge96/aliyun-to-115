@@ -144,8 +144,6 @@ func (d *AliyunTo115) doSync() {
 				continue
 			}
 
-			fmt.Printf("[aliyun_to_115] 文件路径\n", file.Obj.GetPath())
-
 			if stream.rapidUpload {
 				fmt.Printf("[aliyun_to_115] ⚡ 秒传成功: %s (%s, %v)\n", file.GetPath(), formatSize(file.GetSize()), elapsed)
 				rapid++

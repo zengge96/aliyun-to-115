@@ -195,8 +195,6 @@ func (d *AliyunTo115) walkFilesRecursively(ctx context.Context, aliyun aliyunSto
 		return result, nil
 	}
 	rootID := aliyun.GetRootId()
-
-	fmt.Printf("[aliyun_to_115] walkFilesRecursively 开始，GetRootId()=%q, rootID=%q\n", aliyun.GetRootId(), rootID)
 	return walk("", rootID)
 }
 

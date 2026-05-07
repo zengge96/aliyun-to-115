@@ -60,7 +60,7 @@
 openlist cache clear
 ```
 
-这会删除数据库中的所有同步记录（`aliyun_sync_cache` 表），重启后内存 cache 也会清空，所有文件会被重新同步。
+清除数据库中的所有同步记录（`aliyun_sync_cache` 表），重启后内存 cache 也会清空，所有文件会被重新同步。
 
 ## 工作流程
 

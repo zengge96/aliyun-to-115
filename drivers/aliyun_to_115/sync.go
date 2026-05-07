@@ -131,10 +131,7 @@ func (d *AliyunTo115) doSync() {
 				hashVal = driver.GetHash(ctx, file.Obj, model.LinkArgs{})
 				fmt.Printf("[aliyun_to_115] hash值: %s\n", hashVal)
 			}
-			if obj, ok := file.Obj.(*model.Object); ok && hashVal != "" {
-				obj.HashInfo = utils.NewHashInfo(utils.SHA1, hashVal)
-				fmt.Printf("[aliyun_to_115] 设置hash")
-			}
+			file.Obj.HashInfo = utils.NewHashInfo(utils.SHA1, hashVal)
 			hashInfo := file.GetHash()
 			sha1Str := hashInfo.GetHash(utils.SHA1)
 			fmt.Printf("[aliyun_to_115] 重新获取hash值: %s\n", sha1Str)

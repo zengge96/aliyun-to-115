@@ -95,19 +95,15 @@ func (d *AliyunTo115) doSync() {
 		if _, ok := aliyun.(*aliyundrive_share2open.AliyundriveShare2Open); ok {
 			isShare = true
 		}
-		fmt.Printf("[aliyun_to_115] [%d] 存储: mount=%s isShare=%v aliyunStorages类型=%T\n", i+1, mountPath, isShare, aliyun)
 
 		rootID := aliyun.GetRootId()
-		fmt.Printf("[aliyun_to_115] [%d] walkFilesRecursively rootID=%q\n", i+1, rootID)
 		files, err := d.walkFilesRecursively(ctx, aliyun)
 		if err != nil {
 			fmt.Printf("[aliyun_to_115] walk error for %s: %v\n", mountPath, err)
 			continue
 		}
 		total += int64(len(files))
-		fmt.Printf("[aliyun_to_115] [%d] walkFilesRecursively 完成，文件数=%d\n", i+1, len(files))
 		if len(files) == 0 {
-			fmt.Printf("[aliyun_to_115] [%d] ⚠️ 文件数为0，跳过处理\n", i+1)
 			continue
 		}
 
@@ -148,16 +144,16 @@ func (d *AliyunTo115) doSync() {
 			result, uploadErr := d.p115Client.uploadTo115(ctx, stream)
 			elapsed := time.Since(start)
 			if uploadErr != nil || result == nil {
-				fmt.Printf("[aliyun_to_115] upload failed: %s (sha1=%s): %v\n", file.GetPath(), sha1Str, uploadErr)
+				fmt.Printf("[aliyun_to_115] upload failed: %s : %v\n", file.GetPath(), uploadErr)
 				failed++
 				continue
 			}
 
 			if stream.rapidUpload {
-				fmt.Printf("[aliyun_to_115] ⚡ 秒传成功: %s (sha1=%s, %s, %v)\n", file.GetPath(), sha1Str, formatSize(file.GetSize()), elapsed)
+				fmt.Printf("[aliyun_to_115] ⚡ 秒传成功: %s (%s, %v)\n", file.GetPath(), formatSize(file.GetSize()), elapsed)
 				rapid++
 			} else {
-				fmt.Printf("[aliyun_to_115] 📤 正常上传: %s (sha1=%s, %s, %v)\n", file.GetPath(), sha1Str, formatSize(file.GetSize()), elapsed)
+				fmt.Printf("[aliyun_to_115] 📤 正常上传: %s (%s, %v)\n", file.GetPath(), formatSize(file.GetSize()), elapsed)
 				normal++
 			}
 
@@ -172,7 +168,7 @@ func (d *AliyunTo115) doSync() {
 		}
 	}
 
-	fmt.Printf("[aliyun_to_115] ===== 本轮完成: 共%v个 / 跳过%v个 / 秒传%v个 / 正常%v个 / 失败%v个 / 无链接%v个 =====\n",
+	fmt.Printf("[aliyun_to_115] ===== 本轮完成: 共%v个 / 跳过%v个 / 秒传%v个 / 正常%v个 / 失败%v个 =====\n",
 		total, skipped, rapid, normal, failed, noLink)
 }
 

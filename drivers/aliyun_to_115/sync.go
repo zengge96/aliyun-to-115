@@ -207,7 +207,7 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, aliyun aliyunStorag
 
 	// Important: If you want to KEEP files in 115, comment out the line below. 
 	// Currently it deletes the file after upload (usually to just 'register' the SHA1).
-	_ = d.p115Client.removeFrom115(ctx, result)
+	//_ = d.p115Client.removeFrom115(ctx, result)
 
 	d.syncLoopMu.Lock()
 	d.syncedCache[cacheKey] = true

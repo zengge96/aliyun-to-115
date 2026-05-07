@@ -195,7 +195,7 @@ func (d *AliyunTo115) walkFilesRecursively(ctx context.Context, aliyun aliyunSto
 		return result, nil
 	}
 	rootID := aliyun.GetRootId()
-	mountPath := aliyun.MountPath
+	mountPath := aliyun.GetStorage().MountPath
 	return walk(mountPath, rootID)
 }
 

@@ -188,12 +188,9 @@ func (d *AliyundriveShare2Open) Link(ctx context.Context, file model.Obj, args m
 
 func (d *AliyundriveShare2Open) GetHash(ctx context.Context, file model.Obj, args model.LinkArgs) string {
     fileId := file.GetID() 
-	fmt.Printf("文件ID：%s", fileId)
     d.Link(ctx, file, args) 
     if d.Hash_dict != nil {
-		fmt.Printf("Hash_dict非空\n")
         if existedHash, ok := d.Hash_dict[fileId]; ok {
-			fmt.Printf("Hash_dict[fileId]存在\n")
             return existedHash
         }
     }

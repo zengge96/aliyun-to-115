@@ -77,25 +77,19 @@ func (d *AliyunTo115) Drop(ctx context.Context) error {
 func (d *AliyunTo115) discoverAliyunStorages() []aliyunStorage {
 	var storages []aliyunStorage
 	allStorages := op.GetAllStorages()
-	fmt.Printf("[aliyun_to_115] discoverAliyunStorages: 共注册%v个存储\n", len(allStorages))
-	for i, s := range allStorages {
+	for _, s := range allStorages {
 		mountPath := ""
 		if s2 := s.GetStorage(); s2 != nil {
 			mountPath = s2.MountPath
 		}
-		fmt.Printf("[aliyun_to_115] discoverAliyunStorages [%d]: 类型=%T mount=%s\n", i+1, s, mountPath)
 		switch v := s.(type) {
 		case *aliyundrive_open.AliyundriveOpen:
-			fmt.Printf("[aliyun_to_115] discoverAliyunStorages [%d]: ✅ 匹配AliyundriveOpen\n", i+1)
 			storages = append(storages, v)
 		case *aliyundrive_share2open.AliyundriveShare2Open:
-			fmt.Printf("[aliyun_to_115] discoverAliyunStorages [%d]: ✅ 匹配AliyundriveShare2Open\n", i+1)
 			storages = append(storages, v)
 		default:
-			fmt.Printf("[aliyun_to_115] discoverAliyunStorages [%d]: ❌ 不匹配，跳过\n", i+1)
 		}
 	}
-	fmt.Printf("[aliyun_to_115] discoverAliyunStorages: 最终匹配到%v个阿里云存储\n", len(storages))
 	return storages
 }
 

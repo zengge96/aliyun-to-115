@@ -117,10 +117,9 @@ func (d *AliyunTo115) doSync() {
 
 			hashInfo := file.GetHash()
 			sha1Str := hashInfo.GetHash(utils.SHA1)
-				sha1Str := hashInfo.GetHash(utils.SHA1)
-				if sha1Str != "" {
-					cacheKey = sha1Str
-				}
+			if sha1Str != "" {
+				cacheKey = sha1Str
+			}
 
 			d.syncLoopMu.Lock()
 			if d.syncedCache[cacheKey] {

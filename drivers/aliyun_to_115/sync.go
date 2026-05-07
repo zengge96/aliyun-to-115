@@ -130,7 +130,7 @@ func (d *AliyunTo115) doSync() {
 			if driver, ok := aliyun.(*aliyundrive_share2open.AliyundriveShare2Open); ok {
 				hashVal = driver.GetHash(ctx, file, model.LinkArgs{})
 			}
-			if obj, ok := file.(*model.Object); ok && hashVal != "" {
+			if obj, ok := file.Obj.(*model.Object); ok && hashVal != "" {
 				obj.HashInfo = utils.NewHashInfo(utils.SHA1, hashVal)
 			}
 			hashInfo := file.GetHash()

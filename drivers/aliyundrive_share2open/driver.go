@@ -146,7 +146,7 @@ func (d *AliyundriveShare2Open) List(ctx context.Context, dir model.Obj, args mo
 				// Set the correct path for the object
 				if dir.GetPath() != "" {
 					obj.Path = filepath.Join(dir.GetPath(), obj.GetName())
-					fmt.Printf("[aliyun_to_115] 文件路径\n", obj.Path)
+					fmt.Printf("[aliyun_to_115] 文件路径：%s\n", obj.Path)
 				}
 				return obj, nil
 			})

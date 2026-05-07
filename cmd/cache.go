@@ -28,7 +28,7 @@ var clearCacheCmd = &cobra.Command{
 			return nil
 		}
 
-		// 带参数：校验 storage 类型后清所有（cache_key 不区分存储，按 mountPath 过滤暂不可用）
+		// 带参数：按 mountPath 过滤删除
 		id, err := strconv.Atoi(args[0])
 		if err != nil {
 			return fmt.Errorf("id must be a number")
@@ -43,8 +43,8 @@ var clearCacheCmd = &cobra.Command{
 			return fmt.Errorf("only aliyun_to_115 storage is supported, got: %s", storage.Driver)
 		}
 
-		result := db.GetDb().Exec("DELETE FROM aliyun_sync_cache")
-		fmt.Printf("Cleared %d cache entries (storage_id=%d, mount_path=%s)\n", result.RowsAffected, id, storage.MountPath)
+		result := db.GetDb().Exec("DELETE FROM aliyun_sync_cache WHERE cache_key LIKE ?", storage.MountPath+"/%")
+		fmt.Printf("Cleared %d cache entries for storage [%s] (mount_path=%s)\n", result.RowsAffected, storage.MountPath, storage.MountPath)
 		return nil
 	},
 }

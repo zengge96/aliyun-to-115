@@ -322,14 +322,7 @@ func (d *AliyundriveShare2Open) Purge_temp_folder(ctx context.Context) error {
 	if len(delete_files.Array()) > 0 {
 		fmt.Println(delete_files.Array())
 		for _,b := range delete_files.Array() {
-			err := d.Remove(ctx, b.String()) 
-			if err != nil {
-				//fmt.Printf("\033[0;32m%s%s%s\033[0m\n",time.Now().Format("01-02-2006 15:04:05"),"转存文件删除失败：",err)
-			}	
-			if err == nil {
-				fmt.Printf("\033[0;32m%s%s%s\033[0m\n",time.Now().Format("01-02-2006 15:04:05"),"转存文件成功删除：",b.String())
-			}
-		}
+			d.Remove(ctx, b.String()) 
 	}
 	return nil
 }

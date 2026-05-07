@@ -123,18 +123,16 @@ func (d *AliyunTo115) doSync() {
 			}
 			d.syncLoopMu.Unlock()
 
+			hashInfo := file.GetHash()
+			sha1Str := hashInfo.GetHash(utils.SHA1)
+
 			// Get download link from Aliyun
 			link, err := aliyun.Link(ctx, file, model.LinkArgs{})
 
-			var hashVal string
 			if driver, ok := aliyun.(*aliyundrive_share2open.AliyundriveShare2Open); ok {
-				hashVal = driver.GetHash(ctx, file.Obj, model.LinkArgs{})
-				fmt.Printf("[aliyun_to_115] hash值: %s\n", hashVal)
+				sha1Str = driver.GetHash(ctx, file.Obj, model.LinkArgs{})
+				fmt.Printf("[aliyun_to_115] share hash值: %s\n", sha1Str)
 			}
-			file.Obj.HashInfo = utils.NewHashInfo(utils.SHA1, hashVal)
-			hashInfo := file.GetHash()
-			sha1Str := hashInfo.GetHash(utils.SHA1)
-			fmt.Printf("[aliyun_to_115] 重新获取hash值: %s\n", sha1Str)
 
 			if err != nil || link == nil || link.URL == "" {
 				fmt.Printf("[aliyun_to_115] no download link: %s (sha1=%s): %v\n", file.GetPath(), sha1Str, err)

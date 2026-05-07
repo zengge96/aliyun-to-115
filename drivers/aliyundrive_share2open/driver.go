@@ -171,7 +171,7 @@ func (d *AliyundriveShare2Open) Link(ctx context.Context, file model.Obj, args m
 	} 
 
 	time.Sleep(2 * 1000 * time.Millisecond)
-	DownloadUrl, err := d.GetmyLink(ctx, new_file_id, file_name)
+	DownloadUrl, err := d.GetmyLink(ctx, new_file_id, file_id, file_name)
 	if err != nil {
 		fmt.Println(time.Now().Format("01-02-2006 15:04:05"),"获取转存后的直链失败！！！",err)
 	}
@@ -191,9 +191,9 @@ func (d *AliyundriveShare2Open) GetHash(ctx context.Context, file model.Obj, arg
 	fmt.Printf("文件ID：%s", fileId)
     d.Link(ctx, file, args) 
     if d.Hash_dict != nil {
-		fmt.Printf("Hash_dict非空")
+		fmt.Printf("Hash_dict非空\n")
         if existedHash, ok := d.Hash_dict[fileId]; ok {
-			fmt.Printf("Hash_dict[fileId]存在")
+			fmt.Printf("Hash_dict[fileId]存在\n")
             return existedHash
         }
     }
@@ -268,7 +268,7 @@ func (d *AliyundriveShare2Open) Copy2Myali(ctx context.Context, src_driveid stri
 
 }
 
-func (d *AliyundriveShare2Open) GetmyLink(ctx context.Context, file_id string, file_name string) (string, error) {
+func (d *AliyundriveShare2Open) GetmyLink(ctx context.Context, file_id string, old_file_id string, file_name string) (string, error) {
 	existed_download_url, ok := d.DownloadUrl_dict[file_id]
 	if ok {
 		return existed_download_url, nil
@@ -294,8 +294,7 @@ func (d *AliyundriveShare2Open) GetmyLink(ctx context.Context, file_id string, f
 
         if err == nil {
             d.DownloadUrl_dict[file_id] = utils.Json.Get(res, "url").ToString()
-			d.Hash_dict[file_id] = utils.Json.Get(res, "content_hash").ToString()
-			fmt.Printf("缓存Hash：%s", utils.Json.Get(res, "content_hash").ToString())
+			d.Hash_dict[old_file_id] = utils.Json.Get(res, "content_hash").ToString()
 			return d.DownloadUrl_dict[file_id], nil
 		}	
     }	

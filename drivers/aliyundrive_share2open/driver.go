@@ -285,6 +285,7 @@ func (d *AliyundriveShare2Open) GetmyLink(ctx context.Context, file_id string, f
             d.DownloadUrl_dict[file_id] = utils.Json.Get(res, "url").ToString()
 			fmt.Println("文件: ",file_name,"  新增下载直链: ", d.DownloadUrl_dict[file_id])
 			fmt.Println(time.Now().Format("01-02-2006 15:04:05")," 已成功缓存了",len(d.DownloadUrl_dict),"个文件")
+			fmt.Printf("getDownloadUrl: %s\n", res.String())
 			return d.DownloadUrl_dict[file_id], nil
 		}	
     }	

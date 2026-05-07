@@ -227,6 +227,9 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, aliyun aliyunStorag
 	d.syncLoopMu.Lock()
 	d.syncedCache[cacheKey] = true
 	d.syncLoopMu.Unlock()
+
+	d.saveSyncedCache(cacheKey)
+
 	stats.synced++
 }
 

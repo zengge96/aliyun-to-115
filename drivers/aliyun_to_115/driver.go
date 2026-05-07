@@ -3,14 +3,17 @@ package aliyun_to_115
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 
 	_115 "github.com/OpenListTeam/OpenList/v4/drivers/115"
 	aliyundrive_open "github.com/OpenListTeam/OpenList/v4/drivers/aliyundrive_open"
 	aliyundrive_share2open "github.com/OpenListTeam/OpenList/v4/drivers/aliyundrive_share2open"
+	"github.com/OpenListTeam/OpenList/v4/internal/db"
 	"github.com/OpenListTeam/OpenList/v4/internal/driver"
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
 	"github.com/OpenListTeam/OpenList/v4/internal/op"
+	"time"
 )
 
 // aliyunStorage unifies AliyundriveOpen and AliyundriveShare2Open for sync.
@@ -53,6 +56,19 @@ func (d *AliyunTo115) Init(ctx context.Context) error {
 	}
 	d.p115Client = p115Client
 	d.syncedCache = make(map[string]bool)
+
+	// 建表（不存在则创建）
+	db.GetDb().Exec("CREATE TABLE IF NOT EXISTS aliyun_sync_cache (cache_key TEXT PRIMARY KEY, synced_at DATETIME DEFAULT CURRENT_TIMESTAMP)")
+
+	// 从 DB 预热
+	var records []AliyunSyncCache
+	db.GetDb().Find(&records)
+	for _, r := range records {
+		d.syncedCache[r.CacheKey] = true
+	}
+	if len(records) > 0 {
+		fmt.Printf("[aliyun_to_115] 从数据库加载 %d 条同步记录\n", len(records))
+	}
 
 	go d.doSyncLoop()
 	return nil
@@ -130,6 +146,17 @@ func (d *AliyunTo115) GetStorage() *model.Storage {
 
 func (d *AliyunTo115) SetStorage(s model.Storage) {
 	d.p115.SetStorage(s)
+}
+
+// saveSyncedCache 持久化 cache key 到数据库
+func (d *AliyunTo115) saveSyncedCache(cacheKey string) {
+	err := db.GetDb().Create(&AliyunSyncCache{
+		CacheKey: cacheKey,
+		SyncedAt: time.Now(),
+	}).Error
+	if err != nil {
+		fmt.Printf("[aliyun_to_115] 持久化 cache key 失败 [%s]: %v\n", cacheKey, err)
+	}
 }
 
 var _ driver.Driver = (*AliyunTo115)(nil)

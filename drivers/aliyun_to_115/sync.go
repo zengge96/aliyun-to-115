@@ -112,18 +112,9 @@ func (d *AliyunTo115) doSync() {
 		}
 
 		for _, file := range files {
-			hashInfo := file.GetHash()
-			sha1Str := hashInfo.GetHash(utils.SHA1)
-			// Check synced cache (global dedup across all aliyun storages)
-			// For files with SHA1: use SHA1 as key
-			// For files without SHA1 (Share2Open): use parent_path + name + size as key
+
 			var cacheKey string
-			if sha1Str != "" {
-				cacheKey = sha1Str
-			} else {
-				fmt.Printf("[aliyun_to_115] file %s without sha1, skip", file.GetName())
-				continue;
-			}
+			cacheKey = file.GetID()
 			d.syncLoopMu.Lock()
 			if d.syncedCache[cacheKey] {
 				d.syncLoopMu.Unlock()
@@ -134,6 +125,17 @@ func (d *AliyunTo115) doSync() {
 
 			// Get download link from Aliyun
 			link, err := aliyun.Link(ctx, file, model.LinkArgs{})
+
+			var hashVal string
+			if driver, ok := aliyun.(*aliyundrive_share2open.AliyundriveShare2Open); ok {
+				hashVal = driver.GetHash(ctx, file, model.LinkArgs{})
+			}
+			if obj, ok := file.(*model.Object); ok && hashVal != "" {
+				obj.HashInfo = utils.NewHashInfo(utils.SHA1, hashVal)
+			}
+			hashInfo := file.GetHash()
+			sha1Str := hashInfo.GetHash(utils.SHA1)
+
 			if err != nil || link == nil || link.URL == "" {
 				fmt.Printf("[aliyun_to_115] no download link: %s (sha1=%s): %v\n", file.GetPath(), sha1Str, err)
 				noLink++
@@ -195,14 +197,6 @@ func (d *AliyunTo115) walkFilesRecursively(ctx context.Context, aliyun aliyunSto
 				subFiles, _ := walk(parentPath+f.GetName()+string(os.PathSeparator), f.GetID())
 				result = append(result, subFiles...)
 			} else {
-				var hashVal string
-				if driver, ok := aliyun.(*aliyundrive_share2open.AliyundriveShare2Open); ok {
-					hashVal = driver.GetHash(ctx, f, model.LinkArgs{})
-				}
-				if obj, ok := f.(*model.Object); ok && hashVal != "" {
-					obj.HashInfo = utils.NewHashInfo(utils.SHA1, hashVal)
-				}
-
 				fw := &fileWithPath{Obj: f, fullPath: parentPath + f.GetName()}
 				result = append(result, fw)
 			}

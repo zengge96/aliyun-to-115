@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	_115 "github.com/OpenListTeam/OpenList/v4/drivers/115"
+	_115_share "github.com/OpenListTeam/OpenList/v4/drivers/115_share"
 	aliyundrive_open "github.com/OpenListTeam/OpenList/v4/drivers/aliyundrive_open"
 	aliyundrive_share2open "github.com/OpenListTeam/OpenList/v4/drivers/aliyundrive_share2open"
 	"github.com/OpenListTeam/OpenList/v4/internal/db"
@@ -16,7 +17,7 @@ import (
 	"time"
 )
 
-// aliyunStorage unifies AliyundriveOpen and AliyundriveShare2Open for sync.
+// aliyunStorage unifies AliyundriveOpen, AliyundriveShare2Open and 115Share for sync.
 type aliyunStorage interface {
 	List(ctx context.Context, dir model.Obj, args model.ListArgs) ([]model.Obj, error)
 	Link(ctx context.Context, file model.Obj, args model.LinkArgs) (*model.Link, error)
@@ -89,6 +90,8 @@ func (d *AliyunTo115) discoverAliyunStorages() []aliyunStorage {
 		case *aliyundrive_open.AliyundriveOpen:
 			storages = append(storages, v)
 		case *aliyundrive_share2open.AliyundriveShare2Open:
+			storages = append(storages, v)
+		case *_115_share.Pan115Share:
 			storages = append(storages, v)
 		}
 	}

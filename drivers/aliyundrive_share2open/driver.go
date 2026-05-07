@@ -143,11 +143,8 @@ func (d *AliyundriveShare2Open) List(ctx context.Context, dir model.Obj, args mo
 		if err == nil {
 			return utils.SliceConvert(files, func(src File) (model.Obj, error) {
 				obj := fileToObj(src);
-				// Set the correct path for the object
-				if dir.GetPath() != "" {
-					obj.Path = filepath.Join(dir.GetPath(), obj.GetName())
-					fmt.Printf("[aliyun_to_115] 文件路径：%s\n", obj.Path)
-				}
+				obj.Path = filepath.Join(dir.GetPath(), obj.GetName())
+				fmt.Printf("[aliyun_to_115] 文件路径：%s\n", obj.Path)
 				return obj, nil
 			})
 		}	

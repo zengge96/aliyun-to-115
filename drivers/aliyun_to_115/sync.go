@@ -121,8 +121,8 @@ func (d *AliyunTo115) doSync() {
 			if sha1Str != "" {
 				cacheKey = sha1Str
 			} else {
-				cacheKey = fmt.Sprintf("noprefix:%s:%d", file.GetPath(), file.GetSize())
-				fmt.Printf("[aliyun_to_115] file without sha1, using alt dedup key: %s\n", cacheKey)
+				fmt.Printf("[aliyun_to_115] file %s without sha1, skip", file.GetName())
+				continue;
 			}
 			d.syncLoopMu.Lock()
 			if d.syncedCache[cacheKey] {

@@ -160,7 +160,7 @@ func (d *AliyundriveShare2Open) getFiles(fileId string) ([]File, error) {
 		}
 		var e ErrorResp
 		var resp ListResp
-		res, err := base.RestyClient.R().
+		_, err := base.RestyClient.R().
 			SetHeader("x-share-token", d.ShareToken).
 			SetResult(&resp).SetError(&e).SetBody(data).
 			Post("https://api.aliyundrive.com/adrive/v3/file/list")

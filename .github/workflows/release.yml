@@ -2,12 +2,16 @@ name: Release builds
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v1.4.4)'
+        required: false
+        type: string
 
 permissions:
   contents: write
 
 jobs:
-  # Main release job for all platforms
   release:
     strategy:
       matrix:
@@ -59,4 +63,4 @@ jobs:
         with:
           files: build/compress/*
           prerelease: false
-          tag_name: ${{ github.ref }}
+          tag_name: ${{ github.event.inputs.tag || github.ref }}

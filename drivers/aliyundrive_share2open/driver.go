@@ -153,7 +153,6 @@ func (d *AliyundriveShare2Open) Link(ctx context.Context, file model.Obj, args m
 
 	DownloadUrl, ok := d.FileID_Link[file_id]
 	if ok {
-		fmt.Println(time.Now().Format("01-02-2006 15:04:05"),"文件已转存并且下载直链已缓存: ",file_name)
 		return &model.Link{
 			Header: http.Header{
 				"Referer": []string{"https://www.aliyundrive.com/"},
@@ -202,7 +201,6 @@ func (d *AliyundriveShare2Open) Copy2Myali(ctx context.Context, src_driveid stri
 
 	Newfile_id, ok := d.CopyFiles[file_id]  // 如果键不存在，ok 的值为 false，v2 的值为该类型的零值
 	if ok {
-		fmt.Println(time.Now().Format("01-02-2006 15:04:05"),"文件已转存: ",file_name)
 		return Newfile_id, nil
 	}
     targetUrl := "https://api.aliyundrive.com/adrive/v2/batch"
@@ -238,13 +236,11 @@ func (d *AliyundriveShare2Open) Copy2Myali(ctx context.Context, src_driveid stri
 
 	if Newfile_id != "" {
 		d.CopyFiles[file_id] = Newfile_id
-		fmt.Println(time.Now().Format("01-02-2006 15:04:05"),"新增转存记录, 挂载路径: ",d.MountPath," 文件: ",file_name)	
 	}
 	if Newfile_id == "" {
 		NNewfile_id := utils.Json.Get(r, "file_id").ToString()
 		if NNewfile_id != "" {
 			d.CopyFiles[file_id] = NNewfile_id
-			fmt.Println(time.Now().Format("01-02-2006 15:04:05"),"新增转存记录, file_id(x): ",NNewfile_id," 文件: ",file_name)	
 		}
 		if NNewfile_id == "" {
             r, err := d.request(targetUrl, http.MethodPost, func(req *resty.Request) {req.SetBody(jsonData)})
@@ -258,7 +254,6 @@ func (d *AliyundriveShare2Open) Copy2Myali(ctx context.Context, src_driveid stri
             Newfile_id, _ = respon.(map[string]interface{})["body"].(map[string]interface{})["file_id"].(string)
             if Newfile_id != "" {
                 d.CopyFiles[file_id] = Newfile_id
-                fmt.Println(time.Now().Format("01-02-2006 15:04:05"),"新增转存记录, 挂载路径: ",d.MountPath," 文件: ",file_name) 
 			}
             if Newfile_id == "" {
 				fmt.Println(time.Now().Format("01-02-2006 15:04:05"),"获取新file id失败: ",err)
@@ -273,7 +268,6 @@ func (d *AliyundriveShare2Open) Copy2Myali(ctx context.Context, src_driveid stri
 func (d *AliyundriveShare2Open) GetmyLink(ctx context.Context, file_id string, file_name string) (string, error) {
 	existed_download_url, ok := d.DownloadUrl_dict[file_id]
 	if ok {
-		fmt.Println(time.Now().Format("01-02-2006 15:04:05"),"下载链接已存在: ",file_name)
 		return existed_download_url, nil
 	}
 
@@ -298,9 +292,6 @@ func (d *AliyundriveShare2Open) GetmyLink(ctx context.Context, file_id string, f
         if err == nil {
             d.DownloadUrl_dict[file_id] = utils.Json.Get(res, "url").ToString()
 			d.Hash_dict[file_id] = utils.Json.Get(res, "content_hash").ToString()
-			fmt.Println("文件: ",file_name,"  新增下载直链: ", d.DownloadUrl_dict[file_id])
-			fmt.Println(time.Now().Format("01-02-2006 15:04:05")," 已成功缓存了",len(d.DownloadUrl_dict),"个文件")
-			fmt.Printf("getDownloadUrl: %s\n", string(res))
 			return d.DownloadUrl_dict[file_id], nil
 		}	
     }	

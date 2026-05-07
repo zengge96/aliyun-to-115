@@ -8,7 +8,6 @@
 - **SHA1 预注册**：文件上传到 115 后立即删除，只保留 SHA1 记录，使其他 115 用户可以享受秒传
 - **跨驱动全局去重**：同一文件在多个阿里云盘存储中出现，只上传一次
 - **定时同步**：后台 Goroutine 定期扫描，可配置扫描间隔
-- **手动触发**：通过 `Other` action `sync` 手动触发同步
 - **同步记录持久化**：重启后 dedup cache 不丢失（SQLite 持久化）
 
 ## 机制说明
@@ -61,17 +60,7 @@
 openlist cache clear
 ```
 
-这会删除该存储在数据库中的同步记录（`aliyun_sync_cache` 表），重启后内存 cache 也会清空，所有文件会被重新同步。
-
-## 手动触发同步
-
-通过 OpenList API 调用：
-
-```bash
-curl -X POST "http://localhost:8088/api/v3/other" \
-  -H "Content-Type: application/json" \
-  -d '{"action": "sync", "storage_id": "<your_storage_id>"}'
-```
+这会删除数据库中的所有同步记录（`aliyun_sync_cache` 表），重启后内存 cache 也会清空，所有文件会被重新同步。
 
 ## 工作流程
 

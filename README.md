@@ -44,6 +44,7 @@
 | `limit_rate` | float | 否 | 2 | API 限速（1/[limit_rate] 秒/请求） |
 | `root_folder_id` | string | 否 | 0 | 115 根目录 ID |
 | `sync_interval` | number | 否 | 600 | 同步间隔（秒），默认 10 分钟 |
+| `delete_after_sync` | bool | 否 | false | 同步完成后是否删除 115 上的文件（SHA1 秒传记录仍会保留） |
 
 ## 使用方式
 
@@ -92,7 +93,7 @@ doSyncLoop() [定时]
 |--------|------|
 | `AliyundriveOpen` | 阿里云盘个人版 |
 | `AliyundriveShare2Open` | 阿里云盘分享链接（需要先保存到自己的云盘） |
-| `115Share` | 115 分享链接（收件箱） |
+| `115Share` | 115 分享链接（收件箱），listing 直接返回 SHA1 |
 
 ## 许可证
 

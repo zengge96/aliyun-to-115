@@ -3,7 +3,6 @@ package aliyun_to_115
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 
 	aliyundrive_open "github.com/OpenListTeam/OpenList/v4/drivers/aliyundrive_open"
@@ -78,10 +77,6 @@ func (d *AliyunTo115) discoverAliyunStorages() []aliyunStorage {
 	var storages []aliyunStorage
 	allStorages := op.GetAllStorages()
 	for _, s := range allStorages {
-		mountPath := ""
-		if s2 := s.GetStorage(); s2 != nil {
-			mountPath = s2.MountPath
-		}
 		switch v := s.(type) {
 		case *aliyundrive_open.AliyundriveOpen:
 			storages = append(storages, v)

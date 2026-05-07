@@ -62,7 +62,18 @@ func (d *AliyunTo115) doSyncLoop() {
 	}
 }
 
-// doSync performs one sync cycle across all aliyun storages.
+// syncStats 用于统计同步结果
+type syncStats struct {
+	total   int64
+	skipped int64
+	noLink  int64
+	failed  int64
+	synced  int64
+	rapid   int64
+	normal  int64
+}
+
+// doSync 现在会一边遍历一边执行同步
 func (d *AliyunTo115) doSync() {
 	d.syncLoopMu.Lock()
 	if d.syncRunning {
@@ -79,124 +90,125 @@ func (d *AliyunTo115) doSync() {
 	}()
 
 	ctx := context.Background()
-
-	// 每次sync时重新发现，支持动态注册的驱动（如加载顺序晚于aliyun_to_115初始化的Share2Open）
 	aliyunStorages := d.discoverAliyunStorages()
-
-	var total, skipped, noLink, failed, synced, rapid, normal int64
+	stats := &syncStats{}
 
 	fmt.Printf("[aliyun_to_115] ===== 本轮同步开始，共%v个阿里云存储 =====\n", len(aliyunStorages))
-	for _, aliyun := range aliyunStorages {
-		mountPath := ""
-		if s := aliyun.GetStorage(); s != nil {
-			mountPath = s.MountPath
-		}
 
-		files, err := d.walkFilesRecursively(ctx, aliyun)
+	for _, aliyun := range aliyunStorages {
+		mountPath := "/"
+		if s := aliyun.GetStorage(); s != nil {
+			mountPath = s.MountPath + "/"
+		}
+		rootID := aliyun.GetRootId()
+
+		// 开始边走边同步
+		err := d.walkAndSync(ctx, aliyun, mountPath, rootID, stats)
 		if err != nil {
 			fmt.Printf("[aliyun_to_115] walk error for %s: %v\n", mountPath, err)
-			continue
-		}
-		total += int64(len(files))
-		if len(files) == 0 {
-			continue
-		}
-
-		for _, file := range files {
-			var cacheKey string
-			cacheKey = file.GetID()
-
-			hashInfo := file.GetHash()
-			sha1Str := hashInfo.GetHash(utils.SHA1)
-			if sha1Str != "" {
-				cacheKey = sha1Str
-			}
-
-			d.syncLoopMu.Lock()
-			if d.syncedCache[cacheKey] {
-				d.syncLoopMu.Unlock()
-				skipped++
-				continue
-			}
-			d.syncLoopMu.Unlock()
-
-			// Get download link from Aliyun
-			link, err := aliyun.Link(ctx, file, model.LinkArgs{})
-
-			if driver, ok := aliyun.(*aliyundrive_share2open.AliyundriveShare2Open); ok {
-				sha1Str = driver.GetHash(ctx, file.Obj, model.LinkArgs{})
-			}
-
-			if err != nil || link == nil || link.URL == "" {
-				fmt.Printf("[aliyun_to_115] no download link: %s (sha1=%s): %v\n", file.GetPath(), sha1Str, err)
-				noLink++
-				continue
-			}
-
-			// Upload to 115
-			stream := newUrlFileStreamer(file.GetName(), file.GetSize(), sha1Str, link.URL)
-			start := time.Now()
-			result, uploadErr := d.p115Client.uploadTo115(ctx, stream)
-			elapsed := time.Since(start)
-			if uploadErr != nil || result == nil {
-				fmt.Printf("[aliyun_to_115] upload failed: %s : %v\n", file.GetPath(), uploadErr)
-				failed++
-				continue
-			}
-
-			if stream.rapidUpload {
-				fmt.Printf("[aliyun_to_115] ⚡ 秒传成功: %s (%s, %v)\n", file.GetPath(), formatSize(file.GetSize()), elapsed)
-				rapid++
-			} else {
-				fmt.Printf("[aliyun_to_115] 📤 正常上传: %s (%s, %v)\n", file.GetPath(), formatSize(file.GetSize()), elapsed)
-				normal++
-			}
-
-			// Delete from 115 (leaving SHA1 pre-registered)
-			_ = d.p115Client.removeFrom115(ctx, result)
-
-			// Mark as synced
-			d.syncLoopMu.Lock()
-			d.syncedCache[cacheKey] = true
-			d.syncLoopMu.Unlock()
-			synced++
 		}
 	}
 
-	fmt.Printf("[aliyun_to_115] ===== 本轮完成: 共%v个 / 跳过%v个 / 秒传%v个 / 正常%v个 / 失败%v个 =====\n",
-		total, skipped, rapid, normal, failed, noLink)
+	fmt.Printf("[aliyun_to_115] ===== 本轮完成: 发现%v个 / 跳过%v个 / 秒传%v个 / 正常%v个 / 失败%v个 / 无链接%v个 =====\n",
+		stats.total, stats.skipped, stats.rapid, stats.normal, stats.failed, stats.noLink)
 }
 
-// walkFilesRecursively recursively lists all files under an aliyun storage.
-func (d *AliyunTo115) walkFilesRecursively(ctx context.Context, aliyun aliyunStorage) ([]*fileWithPath, error) {
+// walkAndSync 递归遍历并直接处理文件
+func (d *AliyunTo115) walkAndSync(ctx context.Context, aliyun aliyunStorage, rootPath, rootID string, stats *syncStats) error {
 	visited := make(map[string]bool)
-	var walk func(parentPath, parentID string) ([]*fileWithPath, error)
-	walk = func(parentPath, parentID string) ([]*fileWithPath, error) {
+
+	var walk func(parentPath, parentID string) error
+	walk = func(parentPath, parentID string) error {
 		if visited[parentID] {
-			return nil, nil
+			return nil
 		}
 		visited[parentID] = true
 
 		files, err := aliyun.List(ctx, &model.Object{ID: parentID}, model.ListArgs{})
 		if err != nil {
-			return nil, err
+			return err
 		}
 
-		var result []*fileWithPath
 		for _, f := range files {
 			if f.IsDir() {
-				subFiles, _ := walk(parentPath+f.GetName()+string(os.PathSeparator), f.GetID())
-				result = append(result, subFiles...)
+				// 递归进入子目录
+				subPath := parentPath + f.GetName() + string(os.PathSeparator)
+				_ = walk(subPath, f.GetID())
 			} else {
-				fw := &fileWithPath{Obj: f, fullPath: parentPath + f.GetName()}
-				result = append(result, fw)
+				// 发现文件，立即同步
+				stats.total++
+				fullPath := parentPath + f.GetName()
+				d.processSingleFile(ctx, aliyun, f, fullPath, stats)
 			}
 		}
-		return result, nil
+		return nil
 	}
-	rootID := aliyun.GetRootId()
-	mountPath := aliyun.GetStorage().MountPath
-	return walk(mountPath + "/", rootID)
+
+	return walk(rootPath, rootID)
+}
+
+// processSingleFile 封装了单个文件的同步逻辑
+func (d *AliyunTo115) processSingleFile(ctx context.Context, aliyun aliyunStorage, f model.Obj, fullPath string, stats *syncStats) {
+	// 1. 确定 Cache Key (优先使用 SHA1)
+	cacheKey := f.GetID()
+	hashInfo := f.GetHash()
+	sha1Str := hashInfo.GetHash(utils.SHA1)
+	if sha1Str != "" {
+		cacheKey = sha1Str
+	}
+
+	// 2. 检查缓存
+	d.syncLoopMu.Lock()
+	if d.syncedCache[cacheKey] {
+		d.syncLoopMu.Unlock()
+		stats.skipped++
+		return
+	}
+	d.syncLoopMu.Unlock()
+
+	// 3. 获取下载链接
+	link, err := aliyun.Link(ctx, f, model.LinkArgs{})
+	
+	// 特殊驱动处理 (Share2Open)
+	if driver, ok := aliyun.(*aliyundrive_share2open.AliyundriveShare2Open); ok {
+		sha1Str = driver.GetHash(ctx, f, model.LinkArgs{})
+	}
+
+	if err != nil || link == nil || link.URL == "" {
+		fmt.Printf("[aliyun_to_115] no download link: %s (sha1=%s): %v\n", fullPath, sha1Str, err)
+		stats.noLink++
+		return
+	}
+
+	// 4. 执行上传到 115
+	stream := newUrlFileStreamer(f.GetName(), f.GetSize(), sha1Str, link.URL)
+	start := time.Now()
+	result, uploadErr := d.p115Client.uploadTo115(ctx, stream)
+	elapsed := time.Since(start)
+
+	if uploadErr != nil || result == nil {
+		fmt.Printf("[aliyun_to_115] upload failed: %s : %v\n", fullPath, uploadErr)
+		stats.failed++
+		return
+	}
+
+	// 5. 打印结果
+	if stream.rapidUpload {
+		fmt.Printf("[aliyun_to_115] ⚡ 秒传成功: %s (%s, %v)\n", fullPath, formatSize(f.GetSize()), elapsed)
+		stats.rapid++
+	} else {
+		fmt.Printf("[aliyun_to_115] 📤 正常上传: %s (%s, %v)\n", fullPath, formatSize(f.GetSize()), elapsed)
+		stats.normal++
+	}
+
+	// 6. 从 115 删除文件（仅保留 SHA1 预注册）
+	_ = d.p115Client.removeFrom115(ctx, result)
+
+	// 7. 更新缓存
+	d.syncLoopMu.Lock()
+	d.syncedCache[cacheKey] = true
+	d.syncLoopMu.Unlock()
+	stats.synced++
 }
 
 // fileWithPath wraps a model.Obj with its computed full path.

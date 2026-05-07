@@ -145,10 +145,10 @@ func (d *AliyunTo115) doSync() {
 			}
 
 			if stream.rapidUpload {
-				fmt.Printf("[aliyun_to_115] ⚡ 秒传成功: %s (%s, %v)\n", file.GetPath(), formatSize(file.GetSize()), elapsed)
+				fmt.Printf("[aliyun_to_115] ⚡ 秒传成功: %s (%s, %v)\n", file.Obj.GetPath(), formatSize(file.GetSize()), elapsed)
 				rapid++
 			} else {
-				fmt.Printf("[aliyun_to_115] 📤 正常上传: %s (%s, %v)\n", file.GetPath(), formatSize(file.GetSize()), elapsed)
+				fmt.Printf("[aliyun_to_115] 📤 正常上传: %s (%s, %v)\n", file.Obj.GetPath(), formatSize(file.GetSize()), elapsed)
 				normal++
 			}
 

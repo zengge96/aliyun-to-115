@@ -196,7 +196,7 @@ func (d *AliyunTo115) walkFilesRecursively(ctx context.Context, aliyun aliyunSto
 	}
 	rootID := aliyun.GetRootId()
 	mountPath := aliyun.GetStorage().MountPath
-	return walk(mountPath, rootID)
+	return walk(mountPath + "/", rootID)
 }
 
 // fileWithPath wraps a model.Obj with its computed full path.

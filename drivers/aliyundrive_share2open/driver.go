@@ -173,7 +173,7 @@ func (d *AliyundriveShare2Open) Link(ctx context.Context, file model.Obj, args m
 
 	//time.Sleep(2 * 1000 * time.Millisecond)
 	DownloadUrl, err := d.GetmyLink(ctx, new_file_id, file_id, file_name)
-	d.Purge_temp_folder(ctx)
+	d.Remove(ctx, new_file_id)
 	if err != nil {
 		fmt.Println(time.Now().Format("01-02-2006 15:04:05"),"获取转存后的直链失败！！！",err)
 	}

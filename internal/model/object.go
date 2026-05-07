@@ -65,6 +65,10 @@ func (o *Object) SetPath(path string) {
 	o.Path = path
 }
 
+func (o *Object) SetHash(hash utils.HashInfo) {
+	o.HashInfo = hash
+}
+
 func (o *Object) GetHash() utils.HashInfo {
 	return o.HashInfo
 }

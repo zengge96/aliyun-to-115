@@ -92,7 +92,6 @@ func (d *AliyunTo115) doSync() {
 			mountPath = s.MountPath
 		}
 
-		rootID := aliyun.GetRootId()
 		files, err := d.walkFilesRecursively(ctx, aliyun)
 		if err != nil {
 			fmt.Printf("[aliyun_to_115] walk error for %s: %v\n", mountPath, err)

@@ -129,12 +129,15 @@ func (d *AliyunTo115) doSync() {
 			var hashVal string
 			if driver, ok := aliyun.(*aliyundrive_share2open.AliyundriveShare2Open); ok {
 				hashVal = driver.GetHash(ctx, file, model.LinkArgs{})
+				fmt.Printf("[aliyun_to_115] hash值: %s\n", hashVal)
 			}
 			if obj, ok := file.Obj.(*model.Object); ok && hashVal != "" {
 				obj.HashInfo = utils.NewHashInfo(utils.SHA1, hashVal)
+				fmt.Printf("[aliyun_to_115] 设置hash")
 			}
 			hashInfo := file.GetHash()
 			sha1Str := hashInfo.GetHash(utils.SHA1)
+			fmt.Printf("[aliyun_to_115] 重新获取hash值: %s\n", sha1Str)
 
 			if err != nil || link == nil || link.URL == "" {
 				fmt.Printf("[aliyun_to_115] no download link: %s (sha1=%s): %v\n", file.GetPath(), sha1Str, err)

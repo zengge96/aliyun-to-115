@@ -7,21 +7,8 @@ permissions:
   contents: write
 
 jobs:
-  # Set release to prerelease first
-  prerelease:
-    name: Set Prerelease
-    runs-on: ubuntu-latest
-    steps:
-      - name: Prerelease
-        uses: irongut/EditRelease@v1.2.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          id: ${{ github.event.release.id }}
-          prerelease: true
-
   # Main release job for all platforms
   release:
-    needs: prerelease
     strategy:
       matrix:
         build-type: [ 'standard', 'lite' ]
@@ -72,5 +59,4 @@ jobs:
         with:
           files: build/compress/*
           prerelease: false
-          tag_name: ${{ github.event.release.tag_name }}
-
+          tag_name: ${{ github.ref }}

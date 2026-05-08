@@ -38,11 +38,11 @@ func (d *AliyunTo115) Config() driver.Config { return config }
 func (d *AliyunTo115) GetAddition() driver.Additional { return &d.Addition }
 
 func (d *AliyunTo115) Init(ctx context.Context) error {
-	
 	if d.Open115Cookie == "" {
 		return errors.New("open115_cookie is required")
 	}
 
+	// 初始化内部驱动参数
 	d.p115.Addition.Cookie = d.Open115Cookie
 	d.p115.Addition.QRCodeToken = d.QRCodeToken
 	d.p115.Addition.QRCodeSource = d.QRCodeSource
@@ -53,33 +53,39 @@ func (d *AliyunTo115) Init(ctx context.Context) error {
 		return err
 	}
 
-	// RootFolderID == "auto" 时，自动在根目录创建"小雅同步"文件夹
+	// 1. RootFolderID == "auto" 逻辑优化
 	if d.RootFolderID == "auto" {
 		const syncFolderName = "小雅同步"
-		// 先查找是否已存在
 		objs, err := d.p115.List(ctx, &model.Object{ID: "0"}, model.ListArgs{})
-		if err == nil {
-			for _, obj := range objs {
-				if obj.IsDir() && obj.GetName() == syncFolderName {
-					d.RootFolderID = obj.GetID()
-					d.p115.Addition.RootFolderID = d.RootFolderID
-					op.MustSaveDriverStorage(d)
-					fmt.Printf("[aliyun_to_115] auto sync folder found: %s (%s)\n", syncFolderName, d.RootFolderID)
-				} else {
-					// 不存在则创建
-					newDir, err := d.p115.MakeDir(ctx, &model.Object{ID: "0"}, syncFolderName)
-					if err != nil {
-						return fmt.Errorf("auto create sync folder failed: %w", err)
-					}
-					d.RootFolderID = newDir.GetID()
-					d.p115.Addition.RootFolderID = d.RootFolderID
-					op.MustSaveDriverStorage(d)
-					fmt.Printf("[aliyun_to_115] auto created sync folder: %s (%s)\n", syncFolderName, d.RootFolderID)
-				}
+		if err != nil {
+			return fmt.Errorf("list root folder failed: %w", err)
+		}
+
+		var targetID string
+		for _, obj := range objs {
+			if obj.IsDir() && obj.GetName() == syncFolderName {
+				targetID = obj.GetID()
+				break
 			}
 		}
+
+		if targetID == "" {
+			newDir, err := d.p115.MakeDir(ctx, &model.Object{ID: "0"}, syncFolderName)
+			if err != nil {
+				return fmt.Errorf("auto create sync folder failed: %w", err)
+			}
+			targetID = newDir.GetID()
+			fmt.Printf("[aliyun_to_115] auto created sync folder: %s (%s)\n", syncFolderName, targetID)
+		} else {
+			fmt.Printf("[aliyun_to_115] auto sync folder found: %s (%s)\n", syncFolderName, targetID)
+		}
+
+		d.RootFolderID = targetID
+		d.p115.Addition.RootFolderID = targetID
+		op.MustSaveDriverStorage(d)
 	}
 
+	// 2. 初始化同步客户端
 	p115Client, err := newSync115Client(d.Open115Cookie)
 	if err != nil {
 		return err
@@ -87,12 +93,16 @@ func (d *AliyunTo115) Init(ctx context.Context) error {
 	d.p115Client = p115Client
 	d.syncedCache = make(map[string]bool)
 
-	// 建表（不存在则创建）
-	db.GetDb().Exec("CREATE TABLE IF NOT EXISTS aliyun_sync_cache (cache_key TEXT PRIMARY KEY, synced_at DATETIME DEFAULT CURRENT_TIMESTAMP)")
+	err = db.GetDb().Exec("CREATE TABLE IF NOT EXISTS aliyun_sync_cache (cache_key TEXT PRIMARY KEY, synced_at DATETIME DEFAULT CURRENT_TIMESTAMP)").Error
+	if err != nil {
+		return fmt.Errorf("create cache table failed: %w", err)
+	}
 
-	// 从 DB 预热
 	var records []AliyunSyncCache
-	db.GetDb().Find(&records)
+	if err := db.GetDb().Find(&records).Error; err != nil {
+		fmt.Printf("[aliyun_to_115] load cache error: %v\n", err)
+	}
+
 	for _, r := range records {
 		d.syncedCache[r.CacheKey] = true
 	}
@@ -101,6 +111,7 @@ func (d *AliyunTo115) Init(ctx context.Context) error {
 	}
 
 	go d.doSyncLoop()
+
 	return nil
 }
 

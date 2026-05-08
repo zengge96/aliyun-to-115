@@ -6,7 +6,7 @@ OPENLIST_BIN="./openlist"
 INPUT_SQL="xiaoya.sql"
 INIT_WAIT_TIME=12
 
-# 默认参数，可以在config.txt中覆盖定义
+# 默认参数，可以在config.txt中覆盖定义，拷贝到config.txt中修改
 CONST_REFRESH_TOKEN_OPEN="<REFRESH_TOKEN_OPEN>"
 CONST_REFRESH_TOKEN="<REFRESH_TOKEN>"
 CONST_115_COOKIE="<115_COOKIE>"
@@ -14,7 +14,7 @@ CONST_115_SYNC_ROOT_ID="root"
 CONST_TEMP_TRANSFER_FOLDER_ID="root"
 CONST_ALIPAN_TYPE="alipan"
 CONST_ADMIN_PASS="12345"
-MOUNT_PATHS=()
+MOUNT_PATHS=() # ()表示全部挂载，("/每日更新" "/整理中")等表示按需挂载
 
 # ================= 辅助函数 =================
 # SQL 转义，防止单引号注入破坏 SQL 语句

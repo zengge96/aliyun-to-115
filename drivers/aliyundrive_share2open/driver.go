@@ -97,10 +97,6 @@ func (d *AliyundriveShare2Open) Init(ctx context.Context) error {
 			var siteMap map[string]string
 			siteMap = make(map[string]string)
 			d.CopyFiles = siteMap
-			err := d.Purge_temp_folder(ctx)
-			if err != nil {
-				fmt.Printf("\033[0;32m%s%s%s\033[0m\n",time.Now().Format("01-02-2006 15:04:05"),"获取转存文件夹错误",err)
-			}
 		}
 	})
 
@@ -307,25 +303,6 @@ func (d *AliyundriveShare2Open) Remove(ctx context.Context, file_id string) erro
 		})
 	})
 	return err
-}
-
-func (d *AliyundriveShare2Open) Purge_temp_folder(ctx context.Context) error {
-	res, err := d.requestOpen(ctx, "/adrive/v1.0/openFile/list", http.MethodPost, func(req *resty.Request) {
-		req.SetBody(base.Json{
-			"parent_file_id": d.TempTransferFolderID,
-			"drive_id":  d.MyAliDriveId,
-		})
-	})
-	if err != nil {	return err }
-
-	delete_files := gjson.GetBytes(res, "items.#.file_id")
-	if len(delete_files.Array()) > 0 {
-		fmt.Println(delete_files.Array())
-		for _,b := range delete_files.Array() {
-			d.Remove(ctx, b.String()) 
-		}
-	}
-	return nil
 }
 
 func (d *AliyundriveShare2Open) Other(ctx context.Context, args model.OtherArgs) (interface{}, error) {

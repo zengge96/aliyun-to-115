@@ -6,7 +6,7 @@ import os
 import shutil
 import subprocess
 import time
-import ast  # 新增：用于安全解析列表字符串
+import ast  # 用于安全解析字符串列表
 from datetime import datetime
 
 # ================= 配置区 (默认参数) =================
@@ -23,8 +23,10 @@ CONST_115_SYNC_ROOT_ID = "auto"
 CONST_TEMP_TRANSFER_FOLDER_ID = "root"
 CONST_ALIPAN_TYPE = "alipan"
 
-# 挂载目录过滤列表。支持 config.txt 中格式如 ["/路径1", "/路径2"]
-MOUNT_PATHS = ["/每日更新"] 
+# 挂载目录过滤列表。
+# 如果为 [] 则挂载全部。
+# 如果为 ["/路径1", "/路径2"] 则仅挂载以此开头的目录。
+MOUNT_PATHS = [] 
 
 # 丢弃的无效驱动
 DISCARD_DRIVERS = ["PikPakShare", "QuarkShare", "AList V2", "AList V3", "UCShare"]
@@ -51,18 +53,20 @@ def load_external_config():
                 key = key.strip()
                 val = val.strip()
 
-                # 特殊处理 MOUNT_PATHS，解析 ["a", "b"] 格式
+                # 解析 MOUNT_PATHS
                 if key == "MOUNT_PATHS":
                     try:
-                        # 使用 ast.literal_eval 将字符串 ["/a", "/b"] 转为真正的 list
+                        # 能够正确解析 [] 为空列表，解析 ["a", "b"] 为包含两个元素的列表
                         parsed_list = ast.literal_eval(val)
                         if isinstance(parsed_list, list):
-                            MOUNT_PATHS = [str(p).strip() for p in parsed_list]
+                            MOUNT_PATHS = [str(p).strip() for p in parsed_list if str(p).strip()]
+                        else:
+                            print(f"!!! 警告: MOUNT_PATHS 不是有效的列表格式，将不过滤。")
                     except Exception as e:
-                        print(f"!!! 警告: MOUNT_PATHS 格式解析失败，请确保格式为 [\"/A\", \"/B\"]。错误: {e}")
+                        print(f"!!! 警告: MOUNT_PATHS 解析出错: {e}。将不过滤。")
                     continue
 
-                # 其他常规配置处理
+                # 其他配置
                 val = val.strip("'").strip('"')
                 if key == "CONST_REFRESH_TOKEN_OPEN": CONST_REFRESH_TOKEN_OPEN = val
                 elif key == "CONST_REFRESH_TOKEN": CONST_REFRESH_TOKEN = val
@@ -136,7 +140,6 @@ def transform_addition(driver, addition_str):
         return driver, addition_str
 
 def insert_storage_record(cursor, mount_path, order, driver, addition, status="work", modified_at=None):
-    """映射 AList 存储表的 21 个字段"""
     if modified_at is None:
         modified_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
@@ -169,7 +172,7 @@ def run():
         print(f"!!! 数据库表结构异常: {e}")
         return
     
-    print(">>> [3/5] 处理小雅 SQL 数据并应用过滤...")
+    print(">>> [3/5] 正在同步数据...")
     storage_count = 0
     
     with open(INPUT_SQL, 'r', encoding='utf-8') as f:
@@ -201,6 +204,7 @@ def run():
                 
                 # 过滤挂载目录
                 mount_path = vals[1]
+                # 核心逻辑：如果 MOUNT_PATHS 为空列表 []，则 if MOUNT_PATHS 为 False，不执行过滤
                 if MOUNT_PATHS:
                     if not any(mount_path.startswith(p) for p in MOUNT_PATHS):
                         continue
@@ -218,10 +222,10 @@ def run():
                     )
                     storage_count += 1
                 except Exception as e:
-                    print(f"  - 跳过错误行 ({mount_path}): {e}")
+                    print(f"  - 写入失败 ({mount_path}): {e}")
 
     # 手动插入 AliyunTo115
-    print(">>> [4/5] 手动插入 AliyunTo115 驱动 (/115sync)...")
+    print(">>> [4/5] 插入 AliyunTo115 驱动 (/115sync)...")
     sync_addition = {
         "open115_cookie": CONST_115_COOKIE,
         "sync_interval": 20,
@@ -239,17 +243,17 @@ def run():
             addition=json.dumps(sync_addition)
         )
         storage_count += 1
-        print("  - /115sync 插入成功")
-    except Exception as e:
-        print(f"  - /115sync 插入失败: {e}")
+    except: pass
 
     conn.commit()
     conn.close()
     
-    print(">>> [5/5] 全部同步成功！")
-    print(f"--- 总存储设备数: {storage_count} ---")
+    print(">>> [5/5] 同步操作完成！")
+    print(f"--- 最终挂载存储设备数: {storage_count} ---")
     if MOUNT_PATHS:
-        print(f"--- 仅包含白名单目录: {MOUNT_PATHS} ---")
+        print(f"--- 状态: 已启用目录过滤，规则: {MOUNT_PATHS} ---")
+    else:
+        print(f"--- 状态: 未启用目录过滤 (全部挂载) ---")
 
 if __name__ == "__main__":
     run()

@@ -2,10 +2,11 @@ package aliyun_to_115
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -250,6 +251,7 @@ type urlFileStreamer struct {
 	rapidUpload bool
 	reader      io.Reader
 	readerClose func() error
+	file      model.File   // 缓存虚拟文件，避免重复创建
 }
 
 func (f *urlFileStreamer) GetID() string            { return "" }
@@ -305,40 +307,108 @@ func (f *urlFileStreamer) RangeRead(ra http_range.Range) (io.Reader, error) {
 	return resp.Body, nil
 }
 
-func (f *urlFileStreamer) CacheFullAndWriter(up *model.UpdateProgress, w io.Writer) (model.File, error) {
-	tmpF, err := os.CreateTemp(os.TempDir(), "urlstream-*")
-	if err != nil {
-		return nil, fmt.Errorf("CreateTemp failed: %w", err)
+func (f *urlFileStreamer) GetFile() model.File {
+	if f.file != nil {
+		f.file.Seek(0, io.SeekStart)
 	}
-	tmpFileName := tmpF.Name()
-	defer func() {
-		if err != nil {
-			tmpF.Close()
-			os.Remove(tmpFileName)
-		}
-	}()
-
-	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, f.url, nil)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("download URL failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if w != nil {
-		_, err = io.Copy(io.MultiWriter(tmpF, w), resp.Body)
-	} else {
-		_, err = io.Copy(tmpF, resp.Body)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("download to temp file failed: %w", err)
-	}
-	tmpF.Seek(0, io.SeekStart)
-	fc := &model.FileCloser{File: tmpF, Closer: tmpF}
-	return fc, nil
+	return f.file
 }
 
-func (f *urlFileStreamer) GetFile() model.File { return nil }
+// VirtualFile 按需发 HTTP Range 请求，不落盘
+type VirtualFile struct {
+	url        string
+	client     *http.Client
+	size       int64
+	currOffset int64
+	ctx        context.Context
+}
+
+func (v *VirtualFile) Read(p []byte) (n int, err error) {
+	return v.ReadAt(p, v.currOffset)
+}
+
+func (v *VirtualFile) ReadAt(p []byte, off int64) (n int, err error) {
+	if off >= v.size && v.size > 0 {
+		return 0, io.EOF
+	}
+	endPos := off + int64(len(p)) - 1
+	if v.size > 0 && endPos >= v.size {
+		endPos = v.size - 1
+	}
+	req, err := http.NewRequestWithContext(v.ctx, http.MethodGet, v.url, nil)
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", off, endPos))
+	resp, err := v.client.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("http error: %d", resp.StatusCode)
+	}
+	n, err = io.ReadFull(resp.Body, p)
+	if err == io.ErrUnexpectedEOF {
+		err = nil
+	}
+	return n, err
+}
+
+func (v *VirtualFile) Seek(offset int64, whence int) (int64, error) {
+	var newOffset int64
+	switch whence {
+	case io.SeekStart:
+		newOffset = offset
+	case io.SeekCurrent:
+		newOffset = v.currOffset + offset
+	case io.SeekEnd:
+		newOffset = v.size + offset
+	default:
+		return 0, errors.New("invalid whence")
+	}
+	if newOffset < 0 {
+		return 0, errors.New("seek position out of range")
+	}
+	v.currOffset = newOffset
+	return v.currOffset, nil
+}
+
+func (v *VirtualFile) Close() error { return nil }
+
+func (f *urlFileStreamer) CacheFullAndWriter(up *model.UpdateProgress, w io.Writer) (model.File, error) {
+	if f.file != nil {
+		f.file.Seek(0, io.SeekStart)
+		return f.file, nil
+	}
+
+	// HEAD 获取文件大小
+	var fileSize int64
+	if resp, err := http.DefaultClient.Head(f.url); err == nil {
+		fileSize, _ = strconv.ParseInt(resp.Header.Get("Content-Length"), 10, 64)
+		resp.Body.Close()
+	}
+
+	vf := &VirtualFile{
+		url:    f.url,
+		client: http.DefaultClient,
+		size:   fileSize,
+		ctx:    context.Background(),
+	}
+	f.file = vf
+
+	if w != nil {
+		go func() {
+			r, _ := http.Get(f.url)
+			if r != nil {
+				defer r.Body.Close()
+				io.Copy(w, r.Body)
+			}
+		}()
+	}
+
+	return vf, nil
+}
 
 func formatSize(size int64) string {
 	const unit = 1024

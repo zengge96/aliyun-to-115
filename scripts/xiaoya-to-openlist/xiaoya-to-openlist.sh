@@ -7,6 +7,7 @@ INPUT_SQL="./xiaoya.sql"
 INIT_WAIT_TIME=12
 
 # 默认参数，可以在config.txt中覆盖定义，拷贝到config.txt中修改
+XIAOYA_URL="https://github.com/xiaoyaDev/data/raw/refs/heads/main/update.zip"
 CONST_REFRESH_TOKEN_OPEN="<REFRESH_TOKEN_OPEN>" # 获取方式与openlist官方AliyundriveOpen驱动完全一致
 CONST_REFRESH_TOKEN="<REFRESH_TOKEN>"
 CONST_115_COOKIE="<115_COOKIE>"
@@ -39,15 +40,20 @@ check_and_install_deps() {
         MISSING_DEPS+=("curl")
     fi
 
+    # 3. 检查 unzip 是否安装
+    if ! command -v unzip >/dev/null 2>&1; then
+        MISSING_DEPS+=("unzip")
+    fi
+
     # 如果都不缺少，直接返回
     if [ ${#MISSING_DEPS[@]} -eq 0 ]; then
-        echo -e "${GREEN}✅ SQLite 和 Curl 已安装!${NC}"
+        echo -e "${GREEN}✅ 所有依赖 (SQLite, Curl, Unzip) 已安装!${NC}"
         return 0
     fi
 
     echo -e "${YELLOW}⚠️ 检测到缺少依赖: ${MISSING_DEPS[*]}，准备开始安装...${NC}"
 
-    # 3. 检查 root 权限与 sudo
+    # 4. 检查 root 权限与 sudo
     local SUDO_CMD=""
     if [ "$(id -u)" -ne 0 ]; then
         if command -v sudo >/dev/null 2>&1; then
@@ -58,50 +64,87 @@ check_and_install_deps() {
         fi
     fi
 
-    # 4. 探测包管理器并执行安装
+    # 5. 探测包管理器并执行安装
+    # 注意：某些系统中包名可能略有不同（sqlite3 vs sqlite）
     if command -v apt-get >/dev/null 2>&1; then
         echo -e "${YELLOW}🔍 检测到 Debian/Ubuntu 系统 (apt-get)...${NC}"
         $SUDO_CMD apt-get update -y
-        $SUDO_CMD apt-get install -y sqlite3 curl || { echo -e "${RED}安装失败${NC}"; exit 1; }
+        $SUDO_CMD apt-get install -y sqlite3 curl unzip || { echo -e "${RED}❌ 安装失败${NC}"; exit 1; }
 
     elif command -v dnf >/dev/null 2>&1; then
         echo -e "${YELLOW}🔍 检测到 Fedora/RHEL 8+ 系统 (dnf)...${NC}"
-        $SUDO_CMD dnf install -y sqlite curl || { echo -e "${RED}安装失败${NC}"; exit 1; }
+        $SUDO_CMD dnf install -y sqlite curl unzip || { echo -e "${RED}❌ 安装失败${NC}"; exit 1; }
 
     elif command -v yum >/dev/null 2>&1; then
         echo -e "${YELLOW}🔍 检测到 CentOS/RHEL 7 系统 (yum)...${NC}"
-        $SUDO_CMD yum install -y sqlite curl || { echo -e "${RED}安装失败${NC}"; exit 1; }
+        $SUDO_CMD yum install -y sqlite curl unzip || { echo -e "${RED}❌ 安装失败${NC}"; exit 1; }
 
     elif command -v pacman >/dev/null 2>&1; then
         echo -e "${YELLOW}🔍 检测到 Arch Linux 系统 (pacman)...${NC}"
-        $SUDO_CMD pacman -Sy --noconfirm sqlite curl || { echo -e "${RED}安装失败${NC}"; exit 1; }
+        $SUDO_CMD pacman -Sy --noconfirm sqlite curl unzip || { echo -e "${RED}❌ 安装失败${NC}"; exit 1; }
 
     elif command -v zypper >/dev/null 2>&1; then
         echo -e "${YELLOW}🔍 检测到 openSUSE 系统 (zypper)...${NC}"
-        $SUDO_CMD zypper install -y sqlite3 curl || { echo -e "${RED}安装失败${NC}"; exit 1; }
+        $SUDO_CMD zypper install -y sqlite3 curl unzip || { echo -e "${RED}❌ 安装失败${NC}"; exit 1; }
 
     elif command -v apk >/dev/null 2>&1; then
         echo -e "${YELLOW}🔍 检测到 Alpine Linux 系统 (apk)...${NC}"
-        $SUDO_CMD apk add sqlite curl || { echo -e "${RED}安装失败${NC}"; exit 1; }
+        $SUDO_CMD apk add sqlite curl unzip || { echo -e "${RED}❌ 安装失败${NC}"; exit 1; }
 
     elif command -v brew >/dev/null 2>&1; then
         echo -e "${YELLOW}🔍 检测到 macOS (Homebrew)...${NC}"
-        brew install sqlite curl || { echo -e "${RED}安装失败${NC}"; exit 1; }
+        brew install sqlite curl unzip || { echo -e "${RED}❌ 安装失败${NC}"; exit 1; }
 
     else
-        echo -e "${RED}❌ 错误: 无法识别当前系统的包管理器，请手动安装 SQLite 和 Curl。${NC}"
+        echo -e "${RED}❌ 错误: 无法识别当前系统的包管理器，请手动安装 SQLite, Curl 和 Unzip。${NC}"
         exit 1
     fi
 
-    # 5. 最终验证
+    # 6. 最终验证
     local FINAL_CHECK=0
     command -v sqlite3 >/dev/null 2>&1 || FINAL_CHECK=1
     command -v curl >/dev/null 2>&1 || FINAL_CHECK=1
+    command -v unzip >/dev/null 2>&1 || FINAL_CHECK=1
 
     if [ $FINAL_CHECK -eq 0 ]; then
-        echo -e "${GREEN}🎉 所有依赖 (SQLite & Curl) 安装成功!${NC}"
+        echo -e "${GREEN}🎉 所有依赖 (SQLite, Curl, Unzip) 安装成功!${NC}"
     else
-        echo -e "${RED}❌ 错误: 依赖安装后仍无法调用，请检查环境路径。${NC}"
+        echo -e "${RED}❌ 错误: 依赖安装后仍有组件无法调用，请检查环境路径。${NC}"
+        exit 1
+    fi
+}
+
+download_and_extract_sql() {
+    # 定义颜色
+    local RED='\033[0;31m'
+    local GREEN='\033[0;32m'
+    local YELLOW='\033[1;33m'
+    local NC='\033[0m'
+
+    local TEMP_ZIP="./update_data.zip"
+
+    local TARGET_DIR=$(dirname "$INPUT_SQL")
+    mkdir -p "$TARGET_DIR"
+
+    echo -e ">>> 正在下载小雅更新包...${NC}"
+    curl -L -f "$XIAOYA_URL" -o "$TEMP_ZIP" || {
+        echo -e "${RED}❌ 错误: 下载失败。${NC}"
+        exit 1
+    }
+
+    echo -e ">>> 正在提取 SQL 内容到: ${INPUT_SQL}...${NC}"
+    unzip -p "$TEMP_ZIP" "*.sql" > "$INPUT_SQL" || {
+        echo -e "${RED}❌ 错误: 解压失败或压缩包内无 .sql 文件。${NC}"
+        rm -f "$TEMP_ZIP"
+        exit 1
+    }
+
+    rm -f "$TEMP_ZIP"
+
+    if [ -s "$INPUT_SQL" ]; then
+        echo -e "${GREEN}🎉 成功! SQL 文件已保存至: ${INPUT_SQL}${NC}"
+    else
+        echo -e "${RED}❌ 错误: 提取后的文件为空，请检查压缩包内容。${NC}"
         exit 1
     fi
 }
@@ -145,7 +188,7 @@ check_configs() {
 load_external_config() {
     local config_path="./config.txt"
     if [ ! -f "$config_path" ]; then return; fi
-    echo ">>> [0/6] 加载自定义配置..."
+    echo ">>> 加载自定义配置..."
     eval "$(cat "$config_path")"
 }
 
@@ -154,7 +197,7 @@ init_db() {
     mkdir -p "$(dirname "$DB_PATH")"
     
     if [ ! -f "$DB_PATH" ]; then
-        echo ">>> [1/6] 正在通过 $OPENLIST_BIN 初始化数据库..."
+        echo ">>> 正在通过 $OPENLIST_BIN 初始化数据库..."
         if [ -f "$OPENLIST_BIN" ]; then
             chmod 0755 "$OPENLIST_BIN"
         else
@@ -186,6 +229,8 @@ check_and_install_deps
 load_external_config
 check_configs
 
+download_and_extract_sql
+
 if [ ! -f "$INPUT_SQL" ]; then
     echo "!!! 错误: 找不到文件 $INPUT_SQL"
     exit 1
@@ -193,7 +238,7 @@ fi
 
 init_db
 
-echo ">>> [2/6] 清理旧数据并准备环境..."
+echo ">>> 清理旧数据并准备环境..."
 ESC_TOKEN_OPEN=$(escape_sql "$CONST_REFRESH_TOKEN_OPEN")
 ESC_TOKEN=$(escape_sql "$CONST_REFRESH_TOKEN")
 ESC_115_COOKIE=$(escape_sql "$CONST_115_COOKIE")
@@ -217,7 +262,7 @@ CREATE TEMP TABLE temp_storages (
 );
 EOF
 
-echo ">>> [3/6] 解析与转换 SQL 数据..."
+echo ">>> 解析与转换 SQL 数据..."
 
 # 将 x_storages 的数据重定向插入到临时表进行处理
 grep -i "^INSERT INTO x_storages" "$INPUT_SQL" | sed 's/INSERT INTO x_storages/INSERT INTO temp_storages/i' >> "$TMP_SQL"
@@ -274,7 +319,7 @@ FROM temp_storages;
 
 EOF
 
-echo ">>> [4/6] 插入 AliyunTo115 驱动..."
+echo ">>> 插入 AliyunTo115 驱动..."
 cat <<EOF >> "$TMP_SQL"
 INSERT INTO x_storages VALUES (
     NULL, '/115sync', 0, 'AliyunTo115', 1, '', 'work',
@@ -297,12 +342,12 @@ rm -f "$TMP_SQL"
 
 if [ $SQL_RET -eq 0 ]; then
     STORAGE_COUNT=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM x_storages;")
-    echo ">>> [5/6] 同步完成！总挂载数: $STORAGE_COUNT"
+    echo ">>> 同步完成！总挂载数: $STORAGE_COUNT"
 else
     echo "!!! 数据库同步过程中出错，请检查。"
 fi
 
-echo ">>> [6/6] 启动openlist同步服务..."
+echo ">>> 启动openlist同步服务..."
 echo
 
 "$OPENLIST_BIN" server

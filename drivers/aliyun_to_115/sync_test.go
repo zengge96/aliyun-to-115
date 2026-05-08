@@ -1,6 +1,7 @@
 package aliyun_to_115
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha1"
 	"encoding/hex"
@@ -110,9 +111,14 @@ func (m *memFileStreamer) RangeRead(ra http_range.Range) (io.Reader, error) {
 }
 
 func (m *memFileStreamer) CacheFullAndWriter(up *model.UpdateProgress, w io.Writer) (model.File, error) {
-	return nil, nil
+	r := bytes.NewReader(m.data)
+	if w != nil {
+		r.WriteTo(w) // write full content to w if needed
+	}
+	return r, nil
 }
-func (m *memFileStreamer) GetFile() model.File { return nil }
+
+func (m *memFileStreamer) GetFile() model.File { return bytes.NewReader(m.data) }
 
 func TestMemFileStreamer_ImplementsFileStreamer(t *testing.T) {
 	content := []byte("hello world")

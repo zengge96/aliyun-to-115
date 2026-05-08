@@ -4,7 +4,7 @@ import (
 	"errors"
 	"github.com/OpenListTeam/OpenList/v4/drivers/base"
 	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
-	driver115 "github.com/SheltonZhu/115driver/pkg/driver"
+	driver115 "github.com/xiaoyaliu00/115driver/pkg/driver"
 	log "github.com/sirupsen/logrus"
 )
 

@@ -23,8 +23,8 @@ import (
 	netutil "github.com/OpenListTeam/OpenList/v4/internal/net"
 	"github.com/OpenListTeam/OpenList/v4/pkg/http_range"
 	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
-	cipher "github.com/SheltonZhu/115driver/pkg/crypto/ec115"
-	driver115 "github.com/SheltonZhu/115driver/pkg/driver"
+	cipher "github.com/xiaoyaliu00/115driver/pkg/crypto/ec115"
+	driver115 "github.com/xiaoyaliu00/115driver/pkg/driver"
 	"github.com/aliyun/aliyun-oss-go-sdk/oss"
 	"github.com/pkg/errors"
 )
@@ -76,7 +76,7 @@ func (d *Pan115) getFiles(fileId string) ([]FileObj, error) {
 		return nil, err
 	}
 	for _, file := range *files {
-		res = append(res, FileObj{file})
+		res = append(res, FileObj{File: file})
 	}
 	return res, nil
 }
@@ -86,7 +86,7 @@ func (d *Pan115) getNewFile(fileId string) (*FileObj, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &FileObj{*file}, nil
+	return &FileObj{File: *file}, nil
 }
 
 func (d *Pan115) getNewFileByPickCode(pickCode string) (*FileObj, error) {

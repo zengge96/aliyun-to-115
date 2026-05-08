@@ -5,7 +5,7 @@ import (
 
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
 	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
-	"github.com/SheltonZhu/115driver/pkg/driver"
+	"github.com/xiaoyaliu00/115driver/pkg/driver"
 )
 
 var _ model.Obj = (*FileObj)(nil)
@@ -23,7 +23,7 @@ func (f *FileObj) GetHash() utils.HashInfo {
 }
 
 func (f *FileObj) Thumb() string {
-	return f.ThumbURL
+	return ""
 }
 
 type UploadResult struct {

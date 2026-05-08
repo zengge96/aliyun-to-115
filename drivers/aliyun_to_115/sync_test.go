@@ -358,7 +358,7 @@ func TestSync115Client_UploadViaUrlFileStreamer(t *testing.T) {
 	defer client.Drop()
 
 	// 1. Create local temp file (5MB)
-	const fileSize = int64(5 * 1024 * 1024)
+	const fileSize = int64(11 * 1024 * 1024)
 	content := make([]byte, fileSize)
 	rand.Read(content)
 
@@ -406,7 +406,7 @@ func TestSync115Client_UploadViaUrlFileStreamer(t *testing.T) {
 	url := fmt.Sprintf("http://127.0.0.1:%d/test.bin", port)
 
 	// 4. Create urlFileStreamer pointing to local HTTP server
-	stream := newUrlFileStreamer("tdd_url_5mb.bin", fileSize, sha1Str, url)
+	stream := newUrlFileStreamer("tdd_url_11mb.bin", fileSize, sha1Str, url)
 
 	// 5. Upload via HTTP URL → VirtualFile → 115
 	result, err := client.uploadTo115(context.Background(), stream, "0")

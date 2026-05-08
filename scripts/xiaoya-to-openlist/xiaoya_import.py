@@ -8,54 +8,67 @@ import subprocess
 import time
 from datetime import datetime
 
-# ================= 配置区 (参数已填入) =================
+# ================= 配置区 (默认参数) =================
 DB_PATH = "./data/data.db"
-OPENLIST_BIN = "./openlist"  # 主程序路径
+OPENLIST_BIN = "./openlist"
 INPUT_SQL = "xiaoya.sql"
-INIT_WAIT_TIME = 12          # 等待程序初始化数据库的时间(秒)
+INIT_WAIT_TIME = 12
 
-# 1. 阿里云 Open 令牌 (RefreshTokenOpen)
+# 以下 1~6 项配置可被 config.txt 覆盖
 CONST_REFRESH_TOKEN_OPEN = "<REFRESH_TOKEN_OPEN>"
-
-# 2. 阿里云普通刷新令牌 (RefreshToken)
 CONST_REFRESH_TOKEN = "<REFRESH_TOKEN>"
-
-# 3. 115 网盘 Cookie
 CONST_115_COOKIE = "<115_COOKIE>"
-
-# 4. 阿里云转存临时目录 ID
+CONST_115_SYNC_ROOT_ID = "auto"
 CONST_TEMP_TRANSFER_FOLDER_ID = "root"
-
-# 5. 115 同步专用根目录 ID
-CONST_SYNC_ROOT_ID = "<SYNC_ROOT_ID>"
-
-# 6. 阿里云盘类型 (alipan 或 alipanTV)
 CONST_ALIPAN_TYPE = "alipan"
 
 # 丢弃的无效驱动
 DISCARD_DRIVERS = ["PikPakShare", "QuarkShare", "AList V2", "AList V3", "UCShare"]
 # =====================================================
 
+def load_external_config():
+    """从 config.txt 加载配置并覆盖全局变量"""
+    config_path = "./config.txt"
+    if not os.path.exists(config_path):
+        return
+
+    print(f">>> [0/5] 检测到 {config_path}，正在加载自定义配置...")
+    global CONST_REFRESH_TOKEN_OPEN, CONST_REFRESH_TOKEN, CONST_115_COOKIE
+    global CONST_115_SYNC_ROOT_ID, CONST_TEMP_TRANSFER_FOLDER_ID, CONST_ALIPAN_TYPE
+
+    with open(config_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            # 跳过注释和空行
+            if not line or line.startswith("#"):
+                continue
+            
+            if "=" in line:
+                # 拆分键值对，仅拆分第一个等号
+                key, val = line.split("=", 1)
+                key = key.strip()
+                # 去除值两侧的空格及引号 (单引号或双引号)
+                val = val.strip().strip("'").strip('"')
+
+                if key == "CONST_REFRESH_TOKEN_OPEN": CONST_REFRESH_TOKEN_OPEN = val
+                elif key == "CONST_REFRESH_TOKEN": CONST_REFRESH_TOKEN = val
+                elif key == "CONST_115_COOKIE": CONST_115_COOKIE = val
+                elif key == "CONST_115_SYNC_ROOT_ID": CONST_115_SYNC_ROOT_ID = val
+                elif key == "CONST_TEMP_TRANSFER_FOLDER_ID": CONST_TEMP_TRANSFER_FOLDER_ID = val
+                elif key == "CONST_ALIPAN_TYPE": CONST_ALIPAN_TYPE = val
+
 def init_db():
     """初始化数据库逻辑"""
-    # 确保 data 目录存在
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
     if not os.path.exists(DB_PATH):
         print(f">>> [1/5] 数据库不存在，尝试通过 {OPENLIST_BIN} 自动初始化...")
         if not os.path.exists(OPENLIST_BIN):
-            print(f"!!! 错误: 找不到执行文件 {OPENLIST_BIN}，请检查路径。")
+            print(f"!!! 错误: 找不到执行文件 {OPENLIST_BIN}")
             return False
         
-        # 赋予执行权限 (Linux/macOS)
         try:
             os.chmod(OPENLIST_BIN, 0o755)
-        except:
-            pass
-
-        # 后台运行 openlist
-        try:
-            # 使用 Popen 启动，将输出重定向到黑洞，避免阻塞
             process = subprocess.Popen(
                 [OPENLIST_BIN], 
                 stdout=subprocess.DEVNULL, 
@@ -65,7 +78,6 @@ def init_db():
             print(f"  - 程序已启动 (PID: {process.pid})，等待 {INIT_WAIT_TIME}s 生成数据库结构...")
             time.sleep(INIT_WAIT_TIME)
             
-            # 强制结束进程，否则 SQLite 会被占用（File Locked）
             process.terminate()
             process.wait(timeout=5)
             print("  - 初始进程已关闭，准备写入数据。")
@@ -74,27 +86,26 @@ def init_db():
             return False
 
     if os.path.exists(DB_PATH):
-        # 备份现有数据库
         timestamp = datetime.now().strftime("%H%M%S")
         bak_path = f"{DB_PATH}.{timestamp}.bak"
         shutil.copy2(DB_PATH, bak_path)
         print(f">>> [1/5] 数据库已就绪，备份成功: {bak_path}")
         return True
-    else:
-        print(f"!!! 错误: 程序运行后未能生成 {DB_PATH}")
-        return False
+    return False
 
 def transform_addition(driver, addition_str):
     try:
         data = json.loads(addition_str)
         if driver == "AliyundriveShare":
-            data["refresh_token"] = CONST_REFRESH_TOKEN
-            data["RefreshToken"] = CONST_REFRESH_TOKEN
-            data["RefreshTokenOpen"] = CONST_REFRESH_TOKEN_OPEN
-            data["TempTransferFolderID"] = CONST_TEMP_TRANSFER_FOLDER_ID
-            data["use_online_api"] = True
-            data["alipan_type"] = CONST_ALIPAN_TYPE
-            data["api_url_address"] = "https://api.oplist.org/alicloud/renewapi"
+            data.update({
+                "refresh_token": CONST_REFRESH_TOKEN,
+                "RefreshToken": CONST_REFRESH_TOKEN,
+                "RefreshTokenOpen": CONST_REFRESH_TOKEN_OPEN,
+                "TempTransferFolderID": CONST_TEMP_TRANSFER_FOLDER_ID,
+                "use_online_api": True,
+                "alipan_type": CONST_ALIPAN_TYPE,
+                "api_url_address": "https://api.oplist.org/alicloud/renewapi"
+            })
             return "AliyundriveShare2Open", json.dumps(data, ensure_ascii=False)
         
         elif driver == "115 Share":
@@ -111,11 +122,14 @@ def transform_addition(driver, addition_str):
         return driver, addition_str
 
 def run():
+    # 0. 加载外部配置
+    load_external_config()
+
     if not os.path.exists(INPUT_SQL):
         print(f"!!! 错误: 找不到 SQL 文件 {INPUT_SQL}")
         return
 
-    # 第一步：初始化/备份
+    # 1. 初始化/备份
     if not init_db():
         return
 
@@ -128,7 +142,7 @@ def run():
         cursor.execute("DELETE FROM x_meta;")
         cursor.execute("DELETE FROM x_setting_items;")
     except sqlite3.OperationalError as e:
-        print(f"!!! 数据库表结构异常: {e}。请确保 openlist 版本匹配。")
+        print(f"!!! 数据库表结构异常: {e}")
         return
     
     print(">>> [3/5] 处理小雅 SQL 数据并同步...")
@@ -152,11 +166,10 @@ def run():
                 except: 
                     continue
                 
-                driver_name = vals[3]
-                if driver_name in DISCARD_DRIVERS: 
+                if vals[3] in DISCARD_DRIVERS: 
                     continue
                 
-                new_driver, new_addition = transform_addition(driver_name, vals[6])
+                new_driver, new_addition = transform_addition(vals[3], vals[6])
                 
                 # 重新映射到 21 列
                 new_vals = [
@@ -166,24 +179,21 @@ def run():
                     "0", vals[15], "0"
                 ]
                 
-                placeholders = ",".join(["?"] * 21)
-                cursor.execute(f"INSERT INTO x_storages VALUES ({placeholders})", new_vals)
+                cursor.execute(f"INSERT INTO x_storages VALUES ({','.join(['?']*21)})", new_vals)
                 storage_count += 1
             
             elif line_strip.startswith("INSERT INTO x_setting_items"):
-                try: 
-                    cursor.execute(line_strip.rstrip(';'))
-                except: 
-                    pass
+                try: cursor.execute(line_strip.rstrip(';'))
+                except: pass
 
     # --- 手动插入 AliyunTo115 驱动 ---
     print(">>> [4/5] 手动插入 AliyunTo115 驱动 (/115sync)...")
     sync_addition = {
         "open115_cookie": CONST_115_COOKIE,
         "sync_interval": 20,
+        "root_folder_id": CONST_115_SYNC_ROOT_ID,
         "qrcode_token": "", "qrcode_source": "", "page_size": 0,
-        "limit_rate": 0, "delete_after_sync": False,
-        "root_folder_id": CONST_SYNC_ROOT_ID
+        "limit_rate": 0, "delete_after_sync": False
     }
     
     now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -204,8 +214,7 @@ def run():
     conn.close()
     
     print(">>> [5/5] 全部同步成功！")
-    print(f"--- 迁移/新增总存储设备数: {storage_count} 个")
-    print(f"\n[完成] 数据库已就绪，现在你可以正常启动 {OPENLIST_BIN} 了。")
+    print(f"--- 总存储设备数: {storage_count} ---")
 
 if __name__ == "__main__":
     run()

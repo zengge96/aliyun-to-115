@@ -263,7 +263,7 @@ func TestSync115Client_UploadTo115(t *testing.T) {
 		data:    content,
 	}
 
-	result, err := client.uploadTo115(context.Background(), stream)
+	result, err := client.uploadTo115(context.Background(), stream, "0")
 	if err != nil {
 		t.Fatalf("uploadTo115 failed: %v", err)
 	}

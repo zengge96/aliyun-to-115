@@ -139,7 +139,6 @@ def run():
     
     print(">>> [5/5] 全部同步成功！")
     print(f"--- 迁移/新增总驱动数: {storage_count} 个")
-    print(f"--- 所有的备注及 x_meta 乱码已清除。")
     print(f"\n请重启 OpenList 使数据库生效。")
 
 if __name__ == "__main__":

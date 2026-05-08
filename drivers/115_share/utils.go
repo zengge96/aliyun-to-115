@@ -6,10 +6,11 @@ import (
 	"time"
 
 	driver115 "github.com/SheltonZhu/115driver/pkg/driver"
-	"github.com/OpenListTeam/OpenList/v4/drivers/base"
+	//driver115 "github.com/SheltonZhu/115driver/pkg/driver"
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
 	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
 	"github.com/pkg/errors"
+    "github.com/OpenListTeam/OpenList/v4/drivers/base"
 )
 
 var _ model.Obj = (*FileObj)(nil)
@@ -21,7 +22,6 @@ type FileObj struct {
 	FileName string
 	isDir    bool
 	FileID   string
-	ThumbURL string
 }
 
 func (f *FileObj) CreateTime() time.Time {
@@ -56,39 +56,7 @@ func (f *FileObj) GetPath() string {
 	return ""
 }
 
-func (f *FileObj) Thumb() string {
-	return f.ThumbURL
-}
-
-type shareFile struct {
-	FileID     string                 `json:"fid"`
-	UID        int                    `json:"uid"`
-	CategoryID driver115.IntString    `json:"cid"`
-	FileName   string                 `json:"n"`
-	Type       string                 `json:"ico"`
-	Sha1       string                 `json:"sha"`
-	Size       driver115.StringInt64  `json:"s"`
-	Labels     []*driver115.LabelInfo `json:"fl"`
-	UpdateTime string                 `json:"t"`
-	IsFile     int                    `json:"fc"`
-	ParentID   string                 `json:"pid"`
-	ThumbURL   string                 `json:"u"`
-}
-
-type shareSnapResp struct {
-	driver115.BasicResp
-	Data struct {
-		Count int         `json:"count"`
-		List  []shareFile `json:"list"`
-	} `json:"data"`
-}
-
-type downloadShareResp struct {
-	driver115.BasicResp
-	Data driver115.SharedDownloadInfo `json:"data"`
-}
-
-func transFunc(sf shareFile) (model.Obj, error) {
+func transFunc(sf driver115.ShareFile) (model.Obj, error) {
 	timeInt, err := strconv.ParseInt(sf.UpdateTime, 10, 64)
 	if err != nil {
 		return nil, err
@@ -108,77 +76,18 @@ func transFunc(sf shareFile) (model.Obj, error) {
 		FileName: string(sf.FileName),
 		isDir:    isDir,
 		FileID:   fileID,
-		ThumbURL: sf.ThumbURL,
 	}, nil
 }
 
-func buildShareReferer(shareCode, receiveCode string) string {
-	return fmt.Sprintf("https://115cdn.com/s/%s?password=%s&", shareCode, receiveCode)
-}
-
-func (d *Pan115Share) getShareSnapWithUA(ua, dirID string, queries ...driver115.Query) (*shareSnapResp, error) {
-	result := shareSnapResp{}
-	query := map[string]string{
-		"share_code":   d.ShareCode,
-		"receive_code": d.ReceiveCode,
-		"cid":          dirID,
-		"limit":        "20",
-		"asc":          "0",
-		"offset":       "0",
-		"format":       "json",
-	}
-	for _, q := range queries {
-		q(&query)
-	}
-
-	req := d.client.NewRequest().
-		SetQueryParams(query).
-		SetHeader("referer", buildShareReferer(d.ShareCode, d.ReceiveCode)).
-		ForceContentType("application/json;charset=UTF-8").
-		SetResult(&result)
-	if ua != "" {
-		req = req.SetHeader("User-Agent", ua)
-	}
-
-	resp, err := req.Get(driver115.ApiShareSnap)
-	if err := driver115.CheckErr(err, &result, resp); err != nil {
-		return nil, err
-	}
-	return &result, nil
-}
-
-func (d *Pan115Share) downloadByShareCodeWithUA(ua, fileID string) (*driver115.SharedDownloadInfo, error) {
-	result := downloadShareResp{}
-	params := map[string]string{
-		"share_code":   d.ShareCode,
-		"receive_code": d.ReceiveCode,
-		"file_id":      fileID,
-		"dl":           "1",
-	}
-
-	req := d.client.NewRequest().
-		SetQueryParams(params).
-		ForceContentType("application/json").
-		SetHeader("referer", buildShareReferer(d.ShareCode, d.ReceiveCode)).
-		SetResult(&result)
-	if ua != "" {
-		req = req.SetHeader("User-Agent", ua)
-	}
-
-	resp, err := req.Get(driver115.ApiDownloadGetShareUrl)
-	if err := driver115.CheckErr(err, &result, resp); err != nil {
-		return nil, err
-	}
-	return &result.Data, nil
-}
+var UserAgent = driver115.UADefalut
 
 func (d *Pan115Share) login() error {
 	var err error
 	opts := []driver115.Option{
-		driver115.UA(base.UserAgent),
+		driver115.UA(UserAgent),
 	}
 	d.client = driver115.New(opts...)
-	if _, err = d.getShareSnapWithUA(base.UserAgent, ""); err != nil {
+	if _, err := d.client.GetShareSnap(d.ShareCode, d.ReceiveCode, ""); err != nil {
 		return errors.Wrap(err, "failed to get share snap")
 	}
 	cr := &driver115.Credential{}
@@ -196,6 +105,12 @@ func (d *Pan115Share) login() error {
 			return errors.Wrap(err, "failed to login by cookies")
 		}
 		d.client.ImportCredential(cr)
+		if userInfo, err := d.client.GetUser(); err == nil {
+			fmt.Println("115用户等级是: ",userInfo.Vip, "用户名是: ", userInfo.UserName)
+	    	if userInfo.Vip == 0 {
+				base.V115novip = 1
+			}
+		}
 	} else {
 		return errors.New("missing cookie or qrcode account")
 	}

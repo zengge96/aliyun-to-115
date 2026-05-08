@@ -126,6 +126,8 @@ type Config struct {
 	MaxConcurrency        int         `json:"max_concurrency" env:"MAX_CONCURRENCY"`
 	TlsInsecureSkipVerify bool        `json:"tls_insecure_skip_verify" env:"TLS_INSECURE_SKIP_VERIFY"`
 	Tasks                 TasksConfig `json:"tasks" envPrefix:"TASKS_"`
+	Page_Size             int         `json:"page_size"`
+	Max_donwload_count    int         `json:"max_donwload_count"`
 	Cors                  Cors        `json:"cors" envPrefix:"CORS_"`
 	S3                    S3          `json:"s3" envPrefix:"S3_"`
 	FTP                   FTP         `json:"ftp" envPrefix:"FTP_"`
@@ -183,6 +185,8 @@ func DefaultConfig(dataDir string) *Config {
 		MaxConnections:        0,
 		MaxConcurrency:        64,
 		TlsInsecureSkipVerify: false,
+		Page_Size:             20,
+		Max_donwload_count:    100,
 		Tasks: TasksConfig{
 			Download: TaskConfig{
 				Workers:  5,

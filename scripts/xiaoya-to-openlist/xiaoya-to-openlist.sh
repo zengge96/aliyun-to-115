@@ -24,25 +24,7 @@ load_external_config() {
     local config_path="./config.txt"
     if [ ! -f "$config_path" ]; then return; fi
     echo ">>> [0/5] 加载自定义配置..."
-    
-    while IFS='=' read -r key val; do
-        key=$(echo "$key" | xargs)
-        val=$(echo "$val" | xargs | sed -e "s/^'//" -e "s/'$//" -e 's/^"//' -e 's/"$//')
-        
-        case "$key" in
-            CONST_REFRESH_TOKEN_OPEN) CONST_REFRESH_TOKEN_OPEN="$val" ;;
-            CONST_REFRESH_TOKEN) CONST_REFRESH_TOKEN="$val" ;;
-            CONST_115_COOKIE) CONST_115_COOKIE="$val" ;;
-            CONST_115_SYNC_ROOT_ID) CONST_115_SYNC_ROOT_ID="$val" ;;
-            CONST_TEMP_TRANSFER_FOLDER_ID) CONST_TEMP_TRANSFER_FOLDER_ID="$val" ;;
-            CONST_ALIPAN_TYPE) CONST_ALIPAN_TYPE="$val" ;;
-            MOUNT_PATHS)
-                local clean_val
-                clean_val=$(echo "$val" | sed -n "s/.*\[\(.*\)\].*/\1/p" | sed "s/['\",]/ /g")
-                read -r -a MOUNT_PATHS <<< "$clean_val"
-                ;;
-        esac
-    done < <(grep -v '^#' "$config_path" | grep '=')
+    eval "$(cat "$config_path")"
 }
 
 # 初始化数据库

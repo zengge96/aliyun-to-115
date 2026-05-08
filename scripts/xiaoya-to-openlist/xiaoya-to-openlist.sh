@@ -15,7 +15,7 @@ CONST_115_SYNC_ROOT_ID="root"
 CONST_TEMP_TRANSFER_FOLDER_ID="root"
 CONST_ALIPAN_TYPE="alipan" # alipan - 对应opentoken, alipanTV - 对应tvtoken，配置与openlist官方AliyundriveOpen驱动完全一致
 CONST_ADMIN_PASS="12345"
-MOUNT_PATHS=() # ()表示全部挂载，("/每日更新" "/整理中")等表示按需挂载
+MOUNT_PATHS=() # ()表示全部挂载，("/每日更新" "/整理中")表示按需挂载，以具体配置为准
 
 # ================= 辅助函数 =================
 # SQL 转义，防止单引号注入破坏 SQL 语句

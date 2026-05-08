@@ -109,13 +109,14 @@ func (d *Pan115Share) List(ctx context.Context, dir model.Obj, args model.ListAr
 }
 
 func (d *Pan115Share) Link(ctx context.Context, file model.Obj, args model.LinkArgs) (*model.Link, error) {
-    if !d.pan115LoginStatus {
-        if err:= d.login(); err == nil {
-            d.pan115LoginStatus = true
-        }
-    }
+	base.V115novip = 0 // 解除非会员下载次数限制
+	if !d.pan115LoginStatus {
+		if err := d.login(); err == nil {
+			d.pan115LoginStatus = true
+		}
+	}
 
-	file_id :=  file.GetID()
+	file_id := file.GetID()
 	file_name := file.GetName()
     existed_download_url, ok := d.DownloadUrl_dict[file_id]
     if ok {

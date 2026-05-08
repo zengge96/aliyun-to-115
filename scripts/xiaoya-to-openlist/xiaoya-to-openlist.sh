@@ -189,17 +189,18 @@ load_external_config() {
 
 # 初始化数据库
 init_db() {
+    
+    if [ -f "$OPENLIST_BIN" ]; then
+        chmod 0755 "$OPENLIST_BIN"
+    else
+        echo "请先下载openlist同步项目：https://github.com/zengge96/aliyun-to-115"
+        exit 1
+    fi
+
     mkdir -p "$(dirname "$DB_PATH")"
     
     if [ ! -f "$DB_PATH" ]; then
         echo ">>> 正在通过 $OPENLIST_BIN 初始化数据库..."
-        if [ -f "$OPENLIST_BIN" ]; then
-            chmod 0755 "$OPENLIST_BIN"
-        else
-            echo "请先下载openlist同步项目：https://github.com/zengge96/aliyun-to-115"
-            exit 1
-        fi
-        
         "$OPENLIST_BIN" server >/dev/null 2>&1 &
         "$OPENLIST_BIN" admin set "$CONST_ADMIN_PASS" >/dev/null 2>&1 &
         local pid=$!

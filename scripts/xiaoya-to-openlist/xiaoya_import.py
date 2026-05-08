@@ -57,7 +57,9 @@ def init_db():
     if not os.path.exists(DB_PATH):
         print(f">>> [1/5] 正在通过 {OPENLIST_BIN} 初始化数据库...")
         try:
-            os.chmod(OPENLIST_BIN, 0o755)
+            if os.path.exists(OPENLIST_BIN):
+                os.chmod(OPENLIST_BIN, 0o755)
+            # 确保在当前目录下运行，以便相对路径生效
             process = subprocess.Popen([OPENLIST_BIN], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             time.sleep(INIT_WAIT_TIME)
             process.terminate()
@@ -65,10 +67,15 @@ def init_db():
         except Exception as e:
             print(f"!!! 初始化失败: {e}")
             return False
-    # 备份
-    timestamp = datetime.now().strftime("%H%M%S")
-    shutil.copy2(DB_PATH, f"{DB_PATH}.{timestamp}.bak")
-    return True
+            
+    # 修复：确保文件真的生成了再去备份，否则 shutil 会报错
+    if os.path.exists(DB_PATH):
+        timestamp = datetime.now().strftime("%H%M%S")
+        shutil.copy2(DB_PATH, f"{DB_PATH}.{timestamp}.bak")
+        return True
+    else:
+        print(f"!!! 错误: {DB_PATH} 未生成，请检查 OpenList 是否正常启动。")
+        return False
 
 def transform_addition(driver, addition_str):
     try:
@@ -97,7 +104,11 @@ def transform_addition(driver, addition_str):
 
 def run():
     load_external_config()
-    if not os.path.exists(INPUT_SQL) or not init_db(): return
+    if not os.path.exists(INPUT_SQL):
+        print(f"!!! 错误: 找不到文件 {INPUT_SQL}")
+        return
+        
+    if not init_db(): return
 
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -134,9 +145,7 @@ def run():
                 # 转换驱动和配置
                 new_driver, new_addition = transform_addition(vals[3], vals[6])
                 
-                # 核心修复：还原成功版本的 21 列映射逻辑
-                # vals[0]:id, vals[1]:mount_path, vals[2]:order, vals[3]:driver, vals[4]:status
-                # vals[5]:remark, vals[6]:addition, vals[7]:modified_at, ... 等等
+                # 21 列映射逻辑 (与老版本成功逻辑完全对齐)
                 new_vals = [
                     vals[0], mount_path, vals[2], new_driver, vals[4],
                     "", vals[5], new_addition, "", vals[8], vals[9],
@@ -152,21 +161,29 @@ def run():
 
     print(">>> [4/5] 插入 AliyunTo115 驱动...")
     sync_addition = {
-        "open115_cookie": CONST_115_COOKIE, "sync_interval": 20,
-        "root_folder_id": CONST_115_SYNC_ROOT_ID, "qrcode_token": "", 
-        "qrcode_source": "", "page_size": 0, "limit_rate": 0, "delete_after_sync": False
+        "open115_cookie": CONST_115_COOKIE, 
+        "sync_interval": 20,
+        "root_folder_id": CONST_115_SYNC_ROOT_ID, 
+        "qrcode_token": "", 
+        "qrcode_source": "", 
+        "page_size": 0, 
+        "limit_rate": 0, 
+        "delete_after_sync": False
     }
-    # 使用成功版本的同步盘字段布局
+    
+    # 【核心修复】：还原为老脚本能够正常被 OpenList Go语言解析的列顺序和类型！
+    # 新脚本中此处错乱把字符串 'work' 放在了数字字段，导致 OpenList 读取数据库时必定 Panic 崩溃。
     sync_vals = [
-        None, '/115sync', 100, 'AliyunTo115', 'work', 
-        '', '0', json.dumps(sync_addition), '', 
+        None, '/115sync', 0, 'AliyunTo115', 1, '', 'work', 
+        json.dumps(sync_addition), '', 
         datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 0,
-        0, 0, 'false', '302_redirect', '', 0, 'none', 0, '', 0
+        0, 0, '', '', '', 0, '302_redirect', 0, '', 0
     ]
     try:
         cursor.execute(f"INSERT INTO x_storages VALUES ({','.join(['?']*21)})", sync_vals)
         storage_count += 1
-    except: pass
+    except Exception as e: 
+        print(f"  - /115sync 插入失败: {e}")
 
     conn.commit()
     conn.close()

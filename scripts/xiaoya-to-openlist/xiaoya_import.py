@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import time
+import re
 from datetime import datetime
 
 # ================= 配置区 (默认参数) =================
@@ -14,48 +15,56 @@ OPENLIST_BIN = "./openlist"
 INPUT_SQL = "xiaoya.sql"
 INIT_WAIT_TIME = 12
 
-# 以下 1~6 项配置可被 config.txt 覆盖
-CONST_REFRESH_TOKEN_OPEN = "<REFRESH_TOKEN_OPEN>"
-CONST_REFRESH_TOKEN = "<REFRESH_TOKEN>"
-CONST_115_COOKIE = "<115_COOKIE>"
-CONST_115_SYNC_ROOT_ID = "auto"
-CONST_TEMP_TRANSFER_FOLDER_ID = "root"
-CONST_ALIPAN_TYPE = "alipan"
+# 基础配置项 (可被 config.txt 覆盖)
+CONFIG = {
+    "CONST_REFRESH_TOKEN_OPEN": "<REFRESH_TOKEN_OPEN>",
+    "CONST_REFRESH_TOKEN": "<REFRESH_TOKEN>",
+    "CONST_115_COOKIE": "<115_COOKIE>",
+    "CONST_115_SYNC_ROOT_ID": "auto",
+    "CONST_TEMP_TRANSFER_FOLDER_ID": "root",
+    "CONST_ALIPAN_TYPE": "alipan",
+}
 
-# 丢弃的无效驱动
+# 挂载目录白名单：例如 ["/每日更新", "/整理中"]。为空则表示全部挂载。
+MOUNT_WHITELIST = [] 
+
+# 需要丢弃的无效驱动
 DISCARD_DRIVERS = ["PikPakShare", "QuarkShare", "AList V2", "AList V3", "UCShare"]
 # =====================================================
 
 def load_external_config():
-    """从 config.txt 加载配置并覆盖全局变量"""
+    """从 config.txt 加载配置并覆盖默认参数"""
     config_path = "./config.txt"
     if not os.path.exists(config_path):
         return
 
     print(f">>> [0/5] 检测到 {config_path}，正在加载自定义配置...")
-    global CONST_REFRESH_TOKEN_OPEN, CONST_REFRESH_TOKEN, CONST_115_COOKIE
-    global CONST_115_SYNC_ROOT_ID, CONST_TEMP_TRANSFER_FOLDER_ID, CONST_ALIPAN_TYPE
+    global MOUNT_WHITELIST
 
     with open(config_path, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             # 跳过注释和空行
-            if not line or line.startswith("#"):
+            if not line or line.startswith(("#", "--")) or "=" not in line:
                 continue
             
-            if "=" in line:
-                # 拆分键值对，仅拆分第一个等号
-                key, val = line.split("=", 1)
-                key = key.strip()
-                # 去除值两侧的空格及引号 (单引号或双引号)
-                val = val.strip().strip("'").strip('"')
+            # 拆分键值对
+            key, val = line.split("=", 1)
+            key = key.strip()
+            # 去除值两侧的空格和最外层引号
+            clean_val = val.strip().strip("'").strip('"')
 
-                if key == "CONST_REFRESH_TOKEN_OPEN": CONST_REFRESH_TOKEN_OPEN = val
-                elif key == "CONST_REFRESH_TOKEN": CONST_REFRESH_TOKEN = val
-                elif key == "CONST_115_COOKIE": CONST_115_COOKIE = val
-                elif key == "CONST_115_SYNC_ROOT_ID": CONST_115_SYNC_ROOT_ID = val
-                elif key == "CONST_TEMP_TRANSFER_FOLDER_ID": CONST_TEMP_TRANSFER_FOLDER_ID = val
-                elif key == "CONST_ALIPAN_TYPE": CONST_ALIPAN_TYPE = val
+            if key in CONFIG:
+                CONFIG[key] = clean_val
+            elif key == "MOUNT_WHITELIST":
+                # 处理格式如: "/目录1","/目录2" 或 /目录1,/目录2 或 ["/目录1"]
+                raw_list = clean_val.strip("[]").split(",")
+                MOUNT_WHITELIST = [
+                    p.strip().strip("'").strip('"') 
+                    for p in raw_list 
+                    if p.strip()
+                ]
+                print(f"  - 已加载挂载白名单: {MOUNT_WHITELIST}")
 
 def init_db():
     """初始化数据库逻辑"""
@@ -89,27 +98,28 @@ def init_db():
         timestamp = datetime.now().strftime("%H%M%S")
         bak_path = f"{DB_PATH}.{timestamp}.bak"
         shutil.copy2(DB_PATH, bak_path)
-        print(f">>> [1/5] 数据库已就绪，备份成功: {bak_path}")
+        print(f">>> [1/5] 数据库就绪，备份成功: {bak_path}")
         return True
     return False
 
 def transform_addition(driver, addition_str):
+    """根据驱动类型转换配置字符串"""
     try:
         data = json.loads(addition_str)
         if driver == "AliyundriveShare":
             data.update({
-                "refresh_token": CONST_REFRESH_TOKEN,
-                "RefreshToken": CONST_REFRESH_TOKEN,
-                "RefreshTokenOpen": CONST_REFRESH_TOKEN_OPEN,
-                "TempTransferFolderID": CONST_TEMP_TRANSFER_FOLDER_ID,
+                "refresh_token": CONFIG["CONST_REFRESH_TOKEN"],
+                "RefreshToken": CONFIG["CONST_REFRESH_TOKEN"],
+                "RefreshTokenOpen": CONFIG["CONST_REFRESH_TOKEN_OPEN"],
+                "TempTransferFolderID": CONFIG["CONST_TEMP_TRANSFER_FOLDER_ID"],
                 "use_online_api": True,
-                "alipan_type": CONST_ALIPAN_TYPE,
+                "alipan_type": CONFIG["CONST_ALIPAN_TYPE"],
                 "api_url_address": "https://api.oplist.org/alicloud/renewapi"
             })
             return "AliyundriveShare2Open", json.dumps(data, ensure_ascii=False)
         
         elif driver == "115 Share":
-            data["cookie"] = CONST_115_COOKIE
+            data["cookie"] = CONFIG["CONST_115_COOKIE"]
             return "115 Share", json.dumps(data, ensure_ascii=False)
         
         elif driver == "Alias":
@@ -140,25 +150,36 @@ def run():
     try:
         cursor.execute("DELETE FROM x_storages;")
         cursor.execute("DELETE FROM x_meta;")
-        cursor.execute("DELETE FROM x_setting_items;")
+        # cursor.execute("DELETE FROM x_setting_items;") # 如需保留设置可注释此行
     except sqlite3.OperationalError as e:
         print(f"!!! 数据库表结构异常: {e}")
+        conn.close()
         return
     
-    print(">>> [3/5] 处理小雅 SQL 数据并同步...")
+    print(">>> [3/5] 处理 SQL 挂载点数据...")
     storage_count = 0
+    
+    # 正则：匹配 INSERT INTO x_storages VALUES (内容);
+    pattern = re.compile(r"INSERT INTO x_storages.*?VALUES\s*\((.*)\);", re.IGNORECASE)
     
     with open(INPUT_SQL, 'r', encoding='utf-8') as f:
         for line in f:
             line_strip = line.strip()
-            if not line_strip or line_strip.startswith("#") or "X_META" in line_strip.upper():
+            if not line_strip or line_strip.startswith(("#", "--")) or "X_META" in line_strip.upper():
                 continue
             
-            if line_strip.startswith("INSERT INTO x_storages"):
-                start_idx = line_strip.find("(")
-                end_idx = line_strip.rfind(")")
-                vals_str = line_strip[start_idx+1:end_idx]
+            # 处理配置项 (设置项)
+            if line_strip.startswith("INSERT INTO x_setting_items"):
+                try: cursor.execute(line_strip.rstrip(';'))
+                except: pass
+                continue
+
+            # 处理存储驱动
+            match = pattern.search(line_strip)
+            if match:
+                vals_str = match.group(1)
                 
+                # 使用 csv 模块解析 SQL 中的逗号（能正确处理引号内的逗号）
                 f_io = io.StringIO(vals_str)
                 reader = csv.reader(f_io, delimiter=',', quotechar="'", skipinitialspace=True)
                 try: 
@@ -166,32 +187,41 @@ def run():
                 except: 
                     continue
                 
-                if vals[3] in DISCARD_DRIVERS: 
+                mount_path = vals[1]
+                driver_name = vals[3]
+
+                # --- 过滤器 1: 驱动过滤 ---
+                if driver_name in DISCARD_DRIVERS: 
                     continue
                 
-                new_driver, new_addition = transform_addition(vals[3], vals[6])
+                # --- 过滤器 2: 挂载目录白名单过滤 (实现 TODO) ---
+                if MOUNT_WHITELIST:
+                    # 检查 mount_path 是否以白名单中的任何一个开头
+                    if not any(mount_path.startswith(prefix) for prefix in MOUNT_WHITELIST):
+                        continue
                 
-                # 重新映射到 21 列
-                new_vals = [
-                    vals[0], vals[1], vals[2], new_driver, vals[4],
-                    "", vals[5], new_addition, "", vals[8], vals[9],
-                    "0", "0", vals[10], vals[11], vals[12], vals[13], vals[14],
-                    "0", vals[15], "0"
-                ]
+                new_driver, new_addition = transform_addition(driver_name, vals[6])
                 
-                cursor.execute(f"INSERT INTO x_storages VALUES ({','.join(['?']*21)})", new_vals)
-                storage_count += 1
-            
-            elif line_strip.startswith("INSERT INTO x_setting_items"):
-                try: cursor.execute(line_strip.rstrip(';'))
-                except: pass
+                # 重新映射到 21 列 (适配新版数据库结构)
+                # 映射索引: 0:id, 1:mount_path, 2:order, 3:driver, 4:status, 6:addition, 8:remark...
+                try:
+                    new_vals = [
+                        vals[0], mount_path, vals[2], new_driver, vals[4],
+                        "", vals[5], new_addition, "", vals[8], vals[9],
+                        "0", "0", vals[10], vals[11], vals[12], vals[13], vals[14],
+                        "0", vals[15], "0"
+                    ]
+                    cursor.execute(f"INSERT INTO x_storages VALUES ({','.join(['?']*21)})", new_vals)
+                    storage_count += 1
+                except Exception as e:
+                    print(f"  - 插入失败 [{mount_path}]: {e}")
 
     # --- 手动插入 AliyunTo115 驱动 ---
     print(">>> [4/5] 手动插入 AliyunTo115 驱动 (/115sync)...")
     sync_addition = {
-        "open115_cookie": CONST_115_COOKIE,
+        "open115_cookie": CONFIG["CONST_115_COOKIE"],
         "sync_interval": 20,
-        "root_folder_id": CONST_115_SYNC_ROOT_ID,
+        "root_folder_id": CONFIG["CONST_115_SYNC_ROOT_ID"],
         "qrcode_token": "", "qrcode_source": "", "page_size": 0,
         "limit_rate": 0, "delete_after_sync": False
     }

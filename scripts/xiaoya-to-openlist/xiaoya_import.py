@@ -15,14 +15,14 @@ OPENLIST_BIN = "./openlist"
 INPUT_SQL = "xiaoya.sql"
 INIT_WAIT_TIME = 12
 
-# 默认参数 (可被 config.txt 覆盖)
+# 默认参数 (可被 config.txt 覆盖，格式与py脚本完全一致)
 CONST_REFRESH_TOKEN_OPEN = "<REFRESH_TOKEN_OPEN>"
 CONST_REFRESH_TOKEN = "<REFRESH_TOKEN>"
 CONST_115_COOKIE = "<115_COOKIE>"
 CONST_115_SYNC_ROOT_ID = "root"
 CONST_TEMP_TRANSFER_FOLDER_ID = "root"
 CONST_ALIPAN_TYPE = "alipan"
-MOUNT_PATHS = [] 
+MOUNT_PATHS = [] #留空表示全部加载
 
 DISCARD_DRIVERS = ["PikPakShare", "QuarkShare", "AList V2", "AList V3", "UCShare"]
 

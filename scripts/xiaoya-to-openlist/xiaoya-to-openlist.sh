@@ -94,7 +94,40 @@ check_and_install_sqlite() {
     fi
 }
 
-check_and_install_sqlite
+check_configs() {
+    local has_error=0
+    # 定义颜色输出以提高警示效果
+    local RED='\033[0;31m'
+    local YELLOW='\033[1;33m'
+    local NC='\033[0m' # 恢复默认颜色
+
+    # 检查 CONST_REFRESH_TOKEN_OPEN
+    if [[ -z "$CONST_REFRESH_TOKEN_OPEN" || "$CONST_REFRESH_TOKEN_OPEN" == "<REFRESH_TOKEN_OPEN>" ]]; then
+        echo -e "${RED}[错误] 未配置 CONST_REFRESH_TOKEN_OPEN${NC}"
+        echo -e "${YELLOW} -> 提示: 获取方式与openlist官方AliyundriveOpen驱动完全一致${NC}"
+        has_error=1
+    fi
+
+    # 检查 CONST_REFRESH_TOKEN
+    if [[ -z "$CONST_REFRESH_TOKEN" || "$CONST_REFRESH_TOKEN" == "<REFRESH_TOKEN>" ]]; then
+        echo -e "${RED}[错误] 未配置 CONST_REFRESH_TOKEN${NC}"
+        has_error=1
+    fi
+
+    # 检查 CONST_115_COOKIE
+    if [[ -z "$CONST_115_COOKIE" || "$CONST_115_COOKIE" == "<115_COOKIE>" ]]; then
+        echo -e "${RED}[错误] 未配置 CONST_115_COOKIE${NC}"
+        has_error=1
+    fi
+
+    # 如果存在任何一个未配置的项，则退出脚本
+    if [[ $has_error -eq 1 ]]; then
+        echo -e "\n${RED}请先在脚本中填写上述必须的基础配置，然后再重新运行！程序退出。${NC}"
+        exit 1
+    fi
+    
+    echo "基础配置检查通过，继续执行..."
+}
 
 # 加载自定义配置
 load_external_config() {
@@ -137,7 +170,9 @@ init_db() {
 
 # ================= 主流程 =================
 
+check_and_install_sqlite
 load_external_config
+check_configs
 
 if [ ! -f "$INPUT_SQL" ]; then
     echo "!!! 错误: 找不到文件 $INPUT_SQL"

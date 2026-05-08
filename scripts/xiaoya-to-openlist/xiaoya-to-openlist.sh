@@ -127,12 +127,11 @@ download_and_extract_sql() {
     mkdir -p "$TARGET_DIR"
 
     echo -e ">>> 正在下载小雅更新包...${NC}"
-    curl -L -f "$XIAOYA_URL" -o "$TEMP_ZIP" || {
+    curl -sL -f "$XIAOYA_URL" -o "$TEMP_ZIP" || {
         echo -e "${RED}❌ 错误: 下载失败。${NC}"
         exit 1
     }
 
-    echo -e ">>> 正在提取 SQL 内容到: ${INPUT_SQL}...${NC}"
     unzip -p "$TEMP_ZIP" "*.sql" > "$INPUT_SQL" || {
         echo -e "${RED}❌ 错误: 解压失败或压缩包内无 .sql 文件。${NC}"
         rm -f "$TEMP_ZIP"

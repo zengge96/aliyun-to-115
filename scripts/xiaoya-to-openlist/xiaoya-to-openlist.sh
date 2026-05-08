@@ -174,4 +174,7 @@ else
     echo "!!! 数据库同步过程中出错，请检查。"
 fi
 
+echo ">>> [6/6] 启动openlist同步服务..."
+echo
+
 "$OPENLIST_BIN" server

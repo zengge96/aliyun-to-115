@@ -192,6 +192,11 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, aliyun aliyunStorag
 	}
 	d.syncLoopMu.Unlock()
 
+	// 115 share 风控严重，等待 1 秒
+	if _, ok := aliyun.(*aliyundrive_share2open.AliyundriveShare2Open); ok {
+		time.Sleep(1 * time.Second)
+	}
+
 	link, err := aliyun.Link(ctx, f, model.LinkArgs{})
 	if driver, ok := aliyun.(*aliyundrive_share2open.AliyundriveShare2Open); ok {
 		sha1Str = driver.GetHash(ctx, f, model.LinkArgs{})

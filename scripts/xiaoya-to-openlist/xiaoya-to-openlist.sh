@@ -140,9 +140,7 @@ download_and_extract_sql() {
 
     rm -f "$TEMP_ZIP"
 
-    if [ -s "$INPUT_SQL" ]; then
-        echo -e "${GREEN}🎉 成功! SQL 文件已保存至: ${INPUT_SQL}${NC}"
-    else
+    if [ ! -s "$INPUT_SQL" ]; then
         echo -e "${RED}❌ 错误: 提取后的文件为空，请检查压缩包内容。${NC}"
         exit 1
     fi

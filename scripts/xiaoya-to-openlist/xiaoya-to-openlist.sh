@@ -105,7 +105,7 @@ check_and_install_sqlite
 load_external_config() {
     local config_path="./config.txt"
     if [ ! -f "$config_path" ]; then return; fi
-    echo ">>> [0/5] 加载自定义配置..."
+    echo ">>> [0/6] 加载自定义配置..."
     eval "$(cat "$config_path")"
 }
 
@@ -114,7 +114,7 @@ init_db() {
     mkdir -p "$(dirname "$DB_PATH")"
     
     if [ ! -f "$DB_PATH" ]; then
-        echo ">>> [1/5] 正在通过 $OPENLIST_BIN 初始化数据库..."
+        echo ">>> [1/6] 正在通过 $OPENLIST_BIN 初始化数据库..."
         if [ -f "$OPENLIST_BIN" ]; then chmod 0755 "$OPENLIST_BIN"; fi
         
         "$OPENLIST_BIN" server >/dev/null 2>&1 &
@@ -146,7 +146,7 @@ fi
 
 init_db
 
-echo ">>> [2/5] 清理旧数据并准备环境..."
+echo ">>> [2/6] 清理旧数据并准备环境..."
 ESC_TOKEN_OPEN=$(escape_sql "$CONST_REFRESH_TOKEN_OPEN")
 ESC_TOKEN=$(escape_sql "$CONST_REFRESH_TOKEN")
 ESC_115_COOKIE=$(escape_sql "$CONST_115_COOKIE")
@@ -170,7 +170,7 @@ CREATE TEMP TABLE temp_storages (
 );
 EOF
 
-echo ">>> [3/5] 解析与转换 SQL 数据..."
+echo ">>> [3/6] 解析与转换 SQL 数据..."
 
 # 将 x_storages 的数据重定向插入到临时表进行处理
 grep -i "^INSERT INTO x_storages" "$INPUT_SQL" | sed 's/INSERT INTO x_storages/INSERT INTO temp_storages/i' >> "$TMP_SQL"
@@ -227,7 +227,7 @@ FROM temp_storages;
 
 EOF
 
-echo ">>> [4/5] 插入 AliyunTo115 驱动..."
+echo ">>> [4/6] 插入 AliyunTo115 驱动..."
 cat <<EOF >> "$TMP_SQL"
 INSERT INTO x_storages VALUES (
     NULL, '/115sync', 0, 'AliyunTo115', 1, '', 'work',
@@ -250,7 +250,7 @@ rm -f "$TMP_SQL"
 
 if [ $SQL_RET -eq 0 ]; then
     STORAGE_COUNT=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM x_storages;")
-    echo ">>> [5/5] 同步完成！总挂载数: $STORAGE_COUNT"
+    echo ">>> [5/6] 同步完成！总挂载数: $STORAGE_COUNT"
 else
     echo "!!! 数据库同步过程中出错，请检查。"
 fi

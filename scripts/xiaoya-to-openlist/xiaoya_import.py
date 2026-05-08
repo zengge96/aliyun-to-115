@@ -24,7 +24,7 @@ CONST_TEMP_TRANSFER_FOLDER_ID = "root"
 CONST_ALIPAN_TYPE = "alipan"
 
 # 挂载目录过滤列表。支持 config.txt 中格式如 ["/路径1", "/路径2"]
-MOUNT_PATHS = [] 
+MOUNT_PATHS = ["/每日更新"] 
 
 # 丢弃的无效驱动
 DISCARD_DRIVERS = ["PikPakShare", "QuarkShare", "AList V2", "AList V3", "UCShare"]

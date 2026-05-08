@@ -7,12 +7,12 @@ INPUT_SQL="xiaoya.sql"
 INIT_WAIT_TIME=12
 
 # 默认参数，可以在config.txt中覆盖定义，拷贝到config.txt中修改
-CONST_REFRESH_TOKEN_OPEN="<REFRESH_TOKEN_OPEN>"
+CONST_REFRESH_TOKEN_OPEN="<REFRESH_TOKEN_OPEN>" # 获取方式与openlist官方AliyundriveOpen驱动完全一致
 CONST_REFRESH_TOKEN="<REFRESH_TOKEN>"
 CONST_115_COOKIE="<115_COOKIE>"
 CONST_115_SYNC_ROOT_ID="root"
 CONST_TEMP_TRANSFER_FOLDER_ID="root"
-CONST_ALIPAN_TYPE="alipan"
+CONST_ALIPAN_TYPE="alipan" # alipan - 对应opentoken, alipanTV - 对应tvtoken，配置与openlist官方AliyundriveOpen驱动完全一致
 CONST_ADMIN_PASS="12345"
 MOUNT_PATHS=() # ()表示全部挂载，("/每日更新" "/整理中")等表示按需挂载
 

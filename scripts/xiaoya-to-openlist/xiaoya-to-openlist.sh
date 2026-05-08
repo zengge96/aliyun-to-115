@@ -6,13 +6,14 @@ OPENLIST_BIN="./openlist"
 INPUT_SQL="xiaoya.sql"
 INIT_WAIT_TIME=12
 
-# 默认参数
+# 默认参数，可以在config.txt中覆盖定义
 CONST_REFRESH_TOKEN_OPEN="<REFRESH_TOKEN_OPEN>"
 CONST_REFRESH_TOKEN="<REFRESH_TOKEN>"
 CONST_115_COOKIE="<115_COOKIE>"
 CONST_115_SYNC_ROOT_ID="root"
 CONST_TEMP_TRANSFER_FOLDER_ID="root"
 CONST_ALIPAN_TYPE="alipan"
+CONST_ADMIN_PASS="12345"
 MOUNT_PATHS=()
 
 # ================= 辅助函数 =================
@@ -36,6 +37,7 @@ init_db() {
         if [ -f "$OPENLIST_BIN" ]; then chmod 0755 "$OPENLIST_BIN"; fi
         
         "$OPENLIST_BIN" server >/dev/null 2>&1 &
+        "$OPENLIST_BIN" admin set "$CONST_ADMIN_PASS" >/dev/null 2>&1 &
         local pid=$!
         sleep "$INIT_WAIT_TIME"
         kill "$pid" 2>/dev/null
@@ -171,3 +173,5 @@ if [ $SQL_RET -eq 0 ]; then
 else
     echo "!!! 数据库同步过程中出错，请检查。"
 fi
+
+"$OPENLIST_BIN" server

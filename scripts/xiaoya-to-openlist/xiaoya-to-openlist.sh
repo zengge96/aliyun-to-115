@@ -7,7 +7,7 @@ INPUT_SQL="./xiaoya.sql"
 INIT_WAIT_TIME=12
 
 # 默认参数，可以在config.txt中覆盖定义，拷贝到config.txt中修改
-XIAOYA_URL="https://github.com/xiaoyaDev/data/raw/refs/heads/main/update.zip"
+CONST_XIAOYA_URL="https://github.com/xiaoyaDev/data/raw/refs/heads/main/update.zip"
 CONST_REFRESH_TOKEN_OPEN="<REFRESH_TOKEN_OPEN>" # 获取方式与openlist官方AliyundriveOpen驱动完全一致
 CONST_REFRESH_TOKEN="<REFRESH_TOKEN>"
 CONST_115_COOKIE="<115_COOKIE>"
@@ -127,7 +127,7 @@ download_and_extract_sql() {
     mkdir -p "$TARGET_DIR"
 
     echo -e ">>> 正在下载小雅更新包...${NC}"
-    curl -sL -f "$XIAOYA_URL" -o "$TEMP_ZIP" || {
+    curl -sL -f "$CONST_XIAOYA_URL" -o "$TEMP_ZIP" || {
         echo -e "${RED}❌ 错误: 下载失败。${NC}"
         exit 1
     }

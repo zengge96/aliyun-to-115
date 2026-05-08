@@ -38,6 +38,11 @@ func (d *AliyunTo115) Config() driver.Config { return config }
 func (d *AliyunTo115) GetAddition() driver.Additional { return &d.Addition }
 
 func (d *AliyunTo115) Init(ctx context.Context) error {
+	
+	if d.Open115Cookie == "" {
+		return errors.New("open115_cookie is required")
+	}
+
 	d.p115.Addition.Cookie = d.Open115Cookie
 	d.p115.Addition.QRCodeToken = d.QRCodeToken
 	d.p115.Addition.QRCodeSource = d.QRCodeSource
@@ -75,9 +80,6 @@ func (d *AliyunTo115) Init(ctx context.Context) error {
 		}
 	}
 
-	if d.Open115Cookie == "" {
-		return errors.New("open115_cookie is required")
-	}
 	p115Client, err := newSync115Client(d.Open115Cookie)
 	if err != nil {
 		return err

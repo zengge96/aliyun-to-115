@@ -60,19 +60,19 @@ func (d *AliyunTo115) Init(ctx context.Context) error {
 					d.p115.Addition.RootFolderID = d.RootFolderID
 					op.MustSaveDriverStorage(d)
 					fmt.Printf("[aliyun_to_115] auto sync folder found: %s (%s)\n", syncFolderName, d.RootFolderID)
-					return nil
+				} else {
+					// 不存在则创建
+					newDir, err := d.p115.MakeDir(ctx, &model.Object{ID: "0"}, syncFolderName)
+					if err != nil {
+						return fmt.Errorf("auto create sync folder failed: %w", err)
+					}
+					d.RootFolderID = newDir.GetID()
+					d.p115.Addition.RootFolderID = d.RootFolderID
+					op.MustSaveDriverStorage(d)
+					fmt.Printf("[aliyun_to_115] auto created sync folder: %s (%s)\n", syncFolderName, d.RootFolderID)
 				}
 			}
 		}
-		// 不存在则创建
-		newDir, err := d.p115.MakeDir(ctx, &model.Object{ID: "0"}, syncFolderName)
-		if err != nil {
-			return fmt.Errorf("auto create sync folder failed: %w", err)
-		}
-		d.RootFolderID = newDir.GetID()
-		d.p115.Addition.RootFolderID = d.RootFolderID
-		op.MustSaveDriverStorage(d)
-		fmt.Printf("[aliyun_to_115] auto created sync folder: %s (%s)\n", syncFolderName, d.RootFolderID)
 	}
 
 	if d.Open115Cookie == "" {

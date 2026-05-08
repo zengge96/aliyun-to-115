@@ -3,7 +3,7 @@
 # ================= 配置区 =================
 DB_PATH="./data/data.db"
 OPENLIST_BIN="./openlist"
-INPUT_SQL="xiaoya.sql"
+INPUT_SQL="./xiaoya.sql"
 INIT_WAIT_TIME=12
 
 # 默认参数，可以在config.txt中覆盖定义，拷贝到config.txt中修改

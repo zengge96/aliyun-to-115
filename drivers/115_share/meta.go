@@ -19,7 +19,12 @@ type Addition struct {
 var config = driver.Config{
 	Name:        "115 Share",
 	DefaultRoot: "0",
-	NoUpload:    true,
+	// OnlyProxy:   true,
+	// OnlyLocal:         true,
+	CheckStatus:       false,
+	Alert:             "",
+	NoOverwriteUpload: true,
+	NoUpload:          true,
 }
 
 func init() {

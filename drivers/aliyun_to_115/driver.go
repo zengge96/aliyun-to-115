@@ -50,14 +50,29 @@ func (d *AliyunTo115) Init(ctx context.Context) error {
 
 	// RootFolderID == "auto" 时，自动在根目录创建"小雅同步"文件夹
 	if d.RootFolderID == "auto" {
-		newDir, err := d.p115.MakeDir(ctx, &model.Object{ID: "0"}, "小雅同步")
+		const syncFolderName = "小雅同步"
+		// 先查找是否已存在
+		objs, err := d.p115.List(ctx, &model.Object{ID: "0"}, model.ListArgs{})
+		if err == nil {
+			for _, obj := range objs {
+				if obj.IsDir() && obj.GetName() == syncFolderName {
+					d.RootFolderID = obj.GetID()
+					d.p115.Addition.RootFolderID = d.RootFolderID
+					op.MustSaveDriverStorage(d)
+					fmt.Printf("[aliyun_to_115] auto sync folder found: %s (%s)\n", syncFolderName, d.RootFolderID)
+					return nil
+				}
+			}
+		}
+		// 不存在则创建
+		newDir, err := d.p115.MakeDir(ctx, &model.Object{ID: "0"}, syncFolderName)
 		if err != nil {
 			return fmt.Errorf("auto create sync folder failed: %w", err)
 		}
 		d.RootFolderID = newDir.GetID()
 		d.p115.Addition.RootFolderID = d.RootFolderID
 		op.MustSaveDriverStorage(d)
-		fmt.Printf("[aliyun_to_115] auto created sync folder: %s (%s)\n", newDir.GetName(), d.RootFolderID)
+		fmt.Printf("[aliyun_to_115] auto created sync folder: %s (%s)\n", syncFolderName, d.RootFolderID)
 	}
 
 	if d.Open115Cookie == "" {

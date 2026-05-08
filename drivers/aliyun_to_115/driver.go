@@ -48,6 +48,18 @@ func (d *AliyunTo115) Init(ctx context.Context) error {
 		return err
 	}
 
+	// RootFolderID == "auto" 时，自动在根目录创建"小雅同步"文件夹
+	if d.RootFolderID == "auto" {
+		newDir, err := d.p115.MakeDir(ctx, &model.Object{ID: "0"}, "小雅同步")
+		if err != nil {
+			return fmt.Errorf("auto create sync folder failed: %w", err)
+		}
+		d.RootFolderID = newDir.GetID()
+		d.p115.Addition.RootFolderID = d.RootFolderID
+		op.MustSaveDriverStorage(d)
+		fmt.Printf("[aliyun_to_115] auto created sync folder: %s (%s)\n", newDir.GetName(), d.RootFolderID)
+	}
+
 	if d.Open115Cookie == "" {
 		return errors.New("open115_cookie is required")
 	}

@@ -277,6 +277,57 @@ func TestSync115Client_UploadTo115(t *testing.T) {
 }
 
 // =============================================================================
+// Test 5: Upload 11MB large file — exercises OSS multipart + in-memory stream
+// ================================================================================
+
+func TestSync115Client_UploadLargeFile(t *testing.T) {
+	cookie := skipWithoutCookie(t, "/root/.openclaw/115_cookie.txt")
+
+	var client *sync115Client
+	var initErr error
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				initErr = fmt.Errorf("115 init panicked: %v", r)
+			}
+		}()
+		client, initErr = newSync115Client(cookie)
+	}()
+	if initErr != nil {
+		t.Skipf("skip: %v", initErr)
+	}
+	defer client.Drop()
+
+	// Create 11MB test content
+	size := int64(11 * 1024 * 1024)
+	content := make([]byte, size)
+	rand.Read(content)
+
+	h := sha1.New()
+	h.Write(content)
+	sha1Str := strings.ToUpper(hex.EncodeToString(h.Sum(nil)))
+
+	stream := &memFileStreamer{
+		Closers: &utils.Closers{},
+		name:    "tdd_11mb.bin",
+		size:    size,
+		sha1Str: sha1Str,
+		data:    content,
+	}
+
+	result, err := client.uploadTo115(context.Background(), stream, "0")
+	if err != nil {
+		t.Fatalf("uploadTo115 failed: %v", err)
+	}
+	if result == nil {
+		t.Fatal("uploadTo115 returned nil")
+	}
+	t.Logf("✅ uploadTo115 large file success: %s (size=%d)", result.GetName(), result.GetSize())
+
+	client.removeFrom115(context.Background(), result)
+}
+
+// =============================================================================
 // Test 5: Dedup cache — empty aliyunStorages should leave cache unchanged
 // =============================================================================
 func TestSyncDedupCache(t *testing.T) {

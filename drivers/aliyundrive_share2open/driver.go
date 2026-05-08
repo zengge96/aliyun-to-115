@@ -6,7 +6,6 @@ import (
 	"time"
 	"fmt"
 	"encoding/json"
-	"github.com/tidwall/gjson"
 	"github.com/OpenListTeam/OpenList/v4/drivers/base"
 	"github.com/OpenListTeam/OpenList/v4/internal/driver"
 	"github.com/OpenListTeam/OpenList/v4/internal/errs"

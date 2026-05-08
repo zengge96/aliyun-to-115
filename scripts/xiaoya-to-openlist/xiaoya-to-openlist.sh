@@ -202,11 +202,11 @@ init_db() {
     if [ ! -f "$DB_PATH" ]; then
         echo ">>> 正在通过 $OPENLIST_BIN 初始化数据库..."
         "$OPENLIST_BIN" server >/dev/null 2>&1 &
-        "$OPENLIST_BIN" admin set "$CONST_ADMIN_PASS" >/dev/null 2>&1 &
         local pid=$!
         sleep "$INIT_WAIT_TIME"
         kill "$pid" 2>/dev/null
         wait "$pid" 2>/dev/null
+        "$OPENLIST_BIN" admin set "$CONST_ADMIN_PASS" >/dev/null 2>&1 &
     fi
     
     if [ -f "$DB_PATH" ]; then

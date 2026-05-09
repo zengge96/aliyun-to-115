@@ -415,7 +415,7 @@ func (f *urlFileStreamer) CacheFullAndWriter(up *model.UpdateProgress, w io.Writ
 		url:    f.url,
 		client: httpClient,
 		//size:   fileSize,
-		size:   size,
+		size:   f.size,
 		ctx:    context.Background(),
 	}
 	f.file = vf

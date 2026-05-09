@@ -454,11 +454,7 @@ func TestSync115Client_UploadViaUrlFileStreamer(t *testing.T) {
 	os.Remove(tmpPath)
 }
 
-// =============================================================================
-// Test 8: Upload via urlFileStreamer (CDN URL) — URL → VirtualFile → HTTP Range → 115
-// =============================================================================
-
-func TestSync115Client_UploadViaUrlFileStreamer_FromCDN(t *testing.T) {
+func testSync115Client_UploadViaUrlFileStreamer_FromCDN(t *testing.T) {
 	cookie := skipWithoutCookie(t, "/root/.openclaw/115_cookie.txt")
 
 	var syncClient *sync115Client

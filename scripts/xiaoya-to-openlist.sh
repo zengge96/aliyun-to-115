@@ -53,14 +53,11 @@ check_and_install_deps() {
 
     echo -e "${YELLOW}⚠️ 检测到缺少依赖: ${MISSING_DEPS[*]}，准备开始安装...${NC}"
 
-    # 4. 检查 root 权限与 sudo
+    # 4. 检查 root 权限
     local SUDO_CMD=""
     if [ "$(id -u)" -ne 0 ]; then
         if command -v sudo >/dev/null 2>&1; then
             SUDO_CMD="sudo"
-        else
-            echo -e "${RED}❌ 错误: 缺少 root 权限且未找到 sudo，无法安装依赖。${NC}"
-            exit 1
         fi
     fi
 

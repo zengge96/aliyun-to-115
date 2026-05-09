@@ -123,6 +123,21 @@ func (d *AliyunTo115) Drop(ctx context.Context) error {
 }
 
 func (d *AliyunTo115) discoverAliyunStorages() []aliyunStorage {
+	// Wait for all storages in DB to finish initialization (up to 5 minutes)
+	start := time.Now()
+	for {
+		dbStorages, _, err := db.GetStorages(1, 9999)
+		if err == nil && len(op.GetAllStorages()) >= len(dbStorages) {
+			break
+		}
+		if time.Since(start) > 5*time.Minute {
+			fmt.Printf("[aliyun_to_115] discoverAliyunStorages timeout: %d/%d storages ready\n",
+				len(op.GetAllStorages()), len(dbStorages))
+			break
+		}
+		time.Sleep(2 * time.Second)
+	}
+
 	var storages []aliyunStorage
 	allStorages := op.GetAllStorages()
 	for _, s := range allStorages {

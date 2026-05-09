@@ -576,7 +576,7 @@ func TestSync115Client_UploadViaUrlFileStreamer_FromCDN(t *testing.T) {
 		t.Logf("✅ ETag validation passed! Unique etags: %v", uniqueEtags)
 	}
 
-	t.Logf("✅ uploadTo115 via URL success: %s (size=%d)", result.GetName(), result.GetSize())
+	t.Logf("✅ uploadTo115 via URL success: %s (size=%d)\nOutput:%s", result.GetName(), result.GetSize(), capturedOutput)
 
 	// 6. Cleanup: remove from 115
 	syncClient.removeFrom115(context.Background(), result)

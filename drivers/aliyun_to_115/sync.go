@@ -353,7 +353,8 @@ func (v *VirtualFile) ReadAt(p []byte, off int64) (n int, err error) {
 		return 0, fmt.Errorf("http error: %d", resp.StatusCode)
 	}
 	// DEBUG: print Content-Range for first few chunks (before reading body)
-	if off < 10*1024*1024 && resp.Header.Get("Content-Range") != "" { // first 10MB
+	// if off < 10*1024*1024 && resp.Header.Get("Content-Range") != "" { // first 10MB
+	if true {
 		fmt.Printf("[DEBUG HTTP] ReadAt off=%d size=%d resp.Status=%s ContentRange=%s\n",
 			off, len(p), resp.Status, resp.Header.Get("Content-Range"))
 	}

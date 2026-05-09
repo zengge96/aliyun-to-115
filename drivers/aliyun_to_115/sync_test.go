@@ -522,7 +522,7 @@ func TestSync115Client_UploadViaUrlFileStreamer_FromCDN(t *testing.T) {
 
 	stream := newUrlFileStreamer("cdn.bin", fileSize, sha1Str, cdnURL)
 
-	// 加入 30s 整体上传超时 Context
+	// 加入 10s 整体上传超时 Context
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 

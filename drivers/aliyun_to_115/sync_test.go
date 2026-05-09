@@ -455,141 +455,129 @@ func TestSyncDedupCache(t *testing.T) {
 		t.Errorf("cache size = %d, want 1", len(d.syncedCache))
 	}
 }
-// =============================================================================
-// Test: CDN Real Upload — 5 chunks should get 5 different ETags
 
 // =============================================================================
-// Test: GetOSSToken returns valid credentials (uses existing 115driver init)
+// Test 8: Upload via urlFileStreamer (HTTP) — URL → VirtualFile → HTTP Range → 115
 // =============================================================================
-func TestGetOSSToken_ReturnsValidCreds(t *testing.T) {
+
+func TestSync115Client_UploadViaUrlFileStreamer(t *testing.T) {
 	cookie := skipWithoutCookie(t, "/root/.openclaw/115_cookie.txt")
 
-	// Use existing 115driver init pattern from sync.go:newSync115Client
-	cookieMap := make(map[string]string)
-	for _, part := range strings.Split(cookie, ";") {
-		part = strings.TrimSpace(part)
-		if idx := strings.IndexByte(part, '='); idx > 0 {
-			cookieMap[strings.TrimSpace(part[:idx])] = strings.TrimSpace(part[idx+1:])
+	var syncClient *sync115Client
+	var initErr error
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				initErr = fmt.Errorf("115 init panicked: %v", r)
+			}
+		}()
+		syncClient, initErr = newSync115Client(cookie)
+	}()
+	if initErr != nil {
+		t.Skipf("skip: %v", initErr)
+	}
+	defer syncClient.Drop()
+
+	urlPath := "/root/.openclaw/workspace/url.txt"
+	data, err := os.ReadFile(urlPath)
+	if err != nil {
+		t.Skipf("skip: no url file at %s: %v", urlPath, err)
+	}
+	alistURL := strings.TrimSpace(string(data))
+
+	// Follow 302 to get CDN URL
+	httpClient := &http.Client{
+		Timeout:       30 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error { return nil },
+	}
+	reqInit, _ := http.NewRequest(http.MethodGet, alistURL, nil)
+	respInit, err := httpClient.Do(reqInit)
+	if err != nil {
+		t.Fatalf("GET alistURL failed: %v", err)
+	}
+	respInit.Body.Close()
+	if respInit.Request.URL.Host == "47.104.92.112:39123" {
+		t.Skipf("skip: alist server not reachable from this host")
+	}
+
+	cdnURL := respInit.Request.URL.String()
+	t.Logf("cdnURL: %s", cdnURL)
+
+	// 使用 HEAD 请求动态获取远程文件的大小 (fileSize)
+	reqHead, _ := http.NewRequest(http.MethodHead, cdnURL, nil)
+	respHead, err := httpClient.Do(reqHead)
+	if err != nil {
+		t.Fatalf("HEAD cdnURL failed: %v", err)
+	}
+	respHead.Body.Close()
+	fileSize := respHead.ContentLength
+	if fileSize <= 0 {
+		t.Fatalf("Invalid fileSize from CDN: %d", fileSize)
+	}
+
+	// 构造一个合法的假 SHA1 (40个字符的十六进制字符串)
+	sha1Str := "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+
+	// 4. Create urlFileStreamer pointing to local HTTP server
+	stream := newUrlFileStreamer("cdn_test.bin", fileSize, sha1Str, cdnURL)
+
+	// 加入 30s 整体上传超时 Context
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// 劫持标准输出(Stdout)和标准错误(Stderr)，以便捕获屏幕打印记录
+	oldStdout, oldStderr := os.Stdout, os.Stderr
+	rOut, wOut, _ := os.Pipe()
+	rErr, wErr, _ := os.Pipe()
+	os.Stdout, os.Stderr = wOut, wErr
+
+	// 使用 Goroutine 防止管道缓冲区满导致死锁
+	var outBuf bytes.Buffer
+	outputDone := make(chan struct{})
+	go func() {
+		io.Copy(&outBuf, rOut)
+		io.Copy(&outBuf, rErr)
+		close(outputDone)
+	}()
+
+	// 5. Upload via HTTP URL → VirtualFile → 115
+	result, err := syncClient.uploadTo115(ctx, stream, "0")
+
+	// 恢复标准输出
+	wOut.Close()
+	wErr.Close()
+	os.Stdout, os.Stderr = oldStdout, oldStderr
+	<-outputDone // 等待读取完毕
+	capturedOutput := outBuf.String()
+
+	if err != nil {
+		t.Fatalf("uploadTo115 via URL failed: %v\nOutput: %s", err, capturedOutput)
+	}
+	if result == nil {
+		t.Fatal("uploadTo115 returned nil")
+	}
+
+	// 解析屏幕打印，检查 etag
+	// 匹配形如 etag="xxxxx" 或 ETag="xxxxx" 或 Etag=xxxxx 的内容
+	re := regexp.MustCompile(`(?i)etag=["']?([a-zA-Z0-9_-]+)["']?`)
+	matches := re.FindAllStringSubmatch(capturedOutput, -1)
+
+	uniqueEtags := make(map[string]bool)
+	for _, m := range matches {
+		if len(m) > 1 {
+			uniqueEtags[m[1]] = true
 		}
 	}
-	driverClient := driver115.New()
-	driverClient.ImportCookies(cookieMap, ".115.com")
 
-	if _, err := driverClient.UploadAvailable(); err != nil {
-		t.Fatalf("UploadAvailable failed: %v", err)
-	}
-
-	ossToken, err := driverClient.GetOSSToken()
-	if err != nil {
-		t.Fatalf("GetOSSToken failed: %v", err)
-	}
-	if ossToken.AccessKeyID == "" || ossToken.AccessKeySecret == "" || ossToken.SecurityToken == "" {
-		t.Fatal("OSS token fields are empty")
-	}
-	t.Logf("✅ AccessKeyID=%s... SecurityToken=%s... Expires=%s",
-		ossToken.AccessKeyID[:8], ossToken.SecurityToken[:20], ossToken.Expiration)
-}
-
-// =============================================================================
-
-// =============================================================================
-// Test: UploadPart 5 chunks → 5 different ETags
-// Uses existing 115driver initialization (ImportCookies + UploadAvailable)
-// =============================================================================
-func TestUploadPart_DifferentETags(t *testing.T) {
-	cookie := skipWithoutCookie(t, "/root/.openclaw/115_cookie.txt")
-
-	// Use existing 115driver init pattern from sync.go:newSync115Client
-	cookieMap := make(map[string]string)
-	for _, part := range strings.Split(cookie, ";") {
-		part = strings.TrimSpace(part)
-		if idx := strings.IndexByte(part, '='); idx > 0 {
-			cookieMap[strings.TrimSpace(part[:idx])] = strings.TrimSpace(part[idx+1:])
-		}
-	}
-	driverClient := driver115.New()
-	driverClient.ImportCookies(cookieMap, ".115.com")
-
-	if _, err := driverClient.UploadAvailable(); err != nil {
-		t.Fatalf("UploadAvailable failed: %v", err)
-	}
-
-	ossToken, err := driverClient.GetOSSToken()
-	if err != nil {
-		t.Fatalf("GetOSSToken failed: %v", err)
-	}
-
-	// Create OSS client with security token (STS)
-	ossClient, err := netutil.NewOSSClient(
-		driver115.OSSEndpoint,
-		ossToken.AccessKeyID,
-		ossToken.AccessKeySecret,
-		oss.SecurityToken(ossToken.SecurityToken),
-		oss.EnableMD5(true),
-		oss.EnableCRC(true),
-	)
-	if err != nil {
-		t.Fatalf("NewOSSClient failed: %v", err)
-	}
-
-	objectKey := fmt.Sprintf("etag_test_%d.bin", time.Now().UnixNano())
-
-	// Try common 115 upload bucket names
-	// If bucket not accessible, test will skip
-	var bucketName string
-	for _, bn := range []string{"xsoh7-115", "hndf4-115", "shzy-115"} {
-		bucket, err := ossClient.Bucket(bn)
-		if err == nil {
-			bucketName = bn
-			_ = bucket
-			break
-		}
-	}
-	if bucketName == "" {
-		t.Skip("Could not find accessible 115 upload bucket (all buckets returned error)")
-	}
-
-	bucket, _ := ossClient.Bucket(bucketName)
-
-	imur, err := bucket.InitiateMultipartUpload(objectKey,
-		oss.SetHeader(driver115.OssSecurityTokenHeaderName, ossToken.SecurityToken),
-		oss.UserAgentHeader(driver115.OSSUserAgent),
-		oss.EnableSha1(),
-		oss.Sequential(),
-	)
-	if err != nil {
-		t.Fatalf("InitiateMultipartUpload failed: %v", err)
-	}
-	t.Logf("bucket=%s uploadID=%s object=%s", bucketName, imur.UploadID, objectKey)
-
-	// Upload 5 parts with different random content → verify different ETags
-	etags := make([]string, 5)
-	for i := 0; i < 5; i++ {
-		chunk := make([]byte, 1024*1024) // 1MB each
-		io.ReadFull(crand.Reader, chunk)
-		part, err := bucket.UploadPart(imur, bytes.NewReader(chunk), int64(len(chunk)), i+1,
-			oss.SetHeader(driver115.OssSecurityTokenHeaderName, ossToken.SecurityToken),
-			oss.UserAgentHeader(driver115.OSSUserAgent),
-			oss.EnableSha1(),
-		)
-		if err != nil {
-			t.Fatalf("UploadPart chunk[%d] failed: %v", i+1, err)
-		}
-		etags[i] = part.ETag
-		t.Logf("part[%d] etag=%s", i+1, etags[i])
-	}
-
-	// Verify all ETags are different
-	unique := make(map[string]bool)
-	for _, e := range etags {
-		unique[e] = true
-	}
-	if len(unique) != 5 {
-		t.Errorf("ETags NOT all different: %v (unique=%d)", etags, len(unique))
+	t.Logf("Captured %d unique ETags.", len(uniqueEtags))
+	if len(uniqueEtags) < 5 {
+		t.Errorf("Test Failed: expected at least 5 unique etags, but got %d.\nCaptured Output:\n%s", len(uniqueEtags), capturedOutput)
 	} else {
-		t.Logf("✅ all 5 chunks have different ETags: %v", etags)
+		t.Logf("✅ ETag validation passed! Unique etags: %v", uniqueEtags)
 	}
 
-	// Abort to clean up
-	bucket.AbortMultipartUpload(imur)
+	t.Logf("✅ uploadTo115 via URL success: %s (size=%d)", result.GetName(), result.GetSize())
+
+	// 6. Cleanup: remove from 115
+	syncClient.removeFrom115(context.Background(), result)
 }

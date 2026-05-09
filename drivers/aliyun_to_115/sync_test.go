@@ -502,7 +502,7 @@ func TestSync115Client_UploadViaUrlFileStreamer_FromCDN(t *testing.T) {
 	t.Logf("cdnURL: %s", cdnURL)
 
 	// 创建文件，生成假的SHA1
-	const fileSize = int64(11 * 1024 * 1024)
+	const fileSize = int64(100 * 1024 * 1024)
 	content := make([]byte, fileSize)
 	rand.Read(content)
 	tmpFile, err := os.CreateTemp("", "urlstreamertest_*.bin")
@@ -523,7 +523,7 @@ func TestSync115Client_UploadViaUrlFileStreamer_FromCDN(t *testing.T) {
 	stream := newUrlFileStreamer("cdn.bin", fileSize, sha1Str, cdnURL)
 
 	// 加入 30s 整体上传超时 Context
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	// 劫持标准输出(Stdout)和标准错误(Stderr)，以便捕获屏幕打印记录

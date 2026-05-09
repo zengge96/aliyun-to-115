@@ -128,13 +128,16 @@ func (d *AliyunTo115) discoverAliyunStorages() []aliyunStorage {
 	for {
 		dbStorages, _, err := db.GetStorages(1, 9999)
 		if err == nil && len(op.GetAllStorages()) >= len(dbStorages) {
+			fmt.Print("\r[aliyun_to_115] Waiting storages init: all ready\n")
 			break
 		}
 		if time.Since(start) > 5*time.Minute {
-			fmt.Printf("[aliyun_to_115] discoverAliyunStorages timeout: %d/%d storages ready\n",
+			fmt.Printf("\r[aliyun_to_115] Waiting storages init timeout: %d/%d\n",
 				len(op.GetAllStorages()), len(dbStorages))
 			break
 		}
+		fmt.Printf("\r[aliyun_to_115] Waiting storages init: %d/%d ready...",
+				len(op.GetAllStorages()), len(dbStorages))
 		time.Sleep(2 * time.Second)
 	}
 

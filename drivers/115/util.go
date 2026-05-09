@@ -469,7 +469,7 @@ func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.Upload
 						//fmt.Printf("[DEBUG Multi] chunk[%d] ReadAt FAIL offset=%d size=%d err=%v\n", chunk.Number, chunk.Offset, chunk.Size, err)
 						continue
 					}
-					bufSHA1 := sha1.Sum(buf[:chunk.Size])
+					//bufSHA1 := sha1.Sum(buf[:chunk.Size])
 					//fmt.Printf("[DEBUG Multi] chunk[%d] ReadAt OK offset=%d size=%d bufSHA1=%X\n", chunk.Number, chunk.Offset, chunk.Size, bufSHA1)
 					if part, err = bucket.UploadPart(imur, driver.NewLimitedUploadStream(ctx, bytes.NewReader(buf)),
 						chunk.Size, chunk.Number, driver115.OssOption(params, ossToken)...); err == nil {

@@ -332,32 +332,26 @@ func (v *VirtualFile) Read(p []byte) (n int, err error) {
 }
 
 func (v *VirtualFile) ReadAt(p []byte, off int64) (n int, err error) {
-	fmt.Printf("[DEBUG HTTP 1] off = %d, size = %d\n", off, v.size)
 	if off >= v.size && v.size > 0 {
 		return 0, io.EOF
 	}
-	fmt.Printf("[DEBUG HTTP 2]\n")
 	endPos := off + int64(len(p)) - 1
 	if v.size > 0 && endPos >= v.size {
 		endPos = v.size - 1
 	}
-	fmt.Printf("[DEBUG HTTP 3]\n")
 	req, err := http.NewRequestWithContext(v.ctx, http.MethodGet, v.url, nil)
 	if err != nil {
 		return 0, err
 	}
-	fmt.Printf("[DEBUG HTTP 4]\n")
 	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", off, endPos))
 	resp, err := v.client.Do(req)
 	if err != nil {
 		return 0, err
 	}
-	fmt.Printf("[DEBUG HTTP 5]\n")
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK {
 		return 0, fmt.Errorf("http error: %d", resp.StatusCode)
 	}
-	fmt.Printf("[DEBUG HTTP] ReadAt off=%d size=%d resp.Status=%s ContentRange=%s\n", off, len(p), resp.Status, resp.Header.Get("Content-Range"))
 
 	n, err = io.ReadFull(resp.Body, p)
 	if err == io.ErrUnexpectedEOF || err == io.EOF {
@@ -404,12 +398,7 @@ func (f *urlFileStreamer) CacheFullAndWriter(up *model.UpdateProgress, w io.Writ
 
 	// Use a dedicated client with DisableKeepAlives to avoid HTTP/1.1 connection reuse
 	// race conditions when multiple goroutines call ReadAt concurrently on the same VirtualFile
-	httpClient := &http.Client{
-		Transport: &http.Transport{
-			DisableKeepAlives: true,
-		},
-		Timeout: 60 * time.Second,
-	}
+	httpClient := &http.Client{}
 
 	vf := &VirtualFile{
 		url:    f.url,

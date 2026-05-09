@@ -519,7 +519,7 @@ func TestSync115Client_UploadViaUrlFileStreamer(t *testing.T) {
 	sha1Str := "DA39A3EE5E6B4B0D3255BFEF95601890AFD80709"
 
 	// 4. Create urlFileStreamer pointing to local HTTP server
-	stream := newUrlFileStreamer("tdd_url_11mb.bin", fileSize, sha1Str, cdnURL)
+	stream := newUrlFileStreamer("cdn.bin", fileSize, sha1Str, cdnURL)
 
 	// 加入 30s 整体上传超时 Context
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

@@ -454,6 +454,7 @@ func TestSync115Client_UploadViaUrlFileStreamer(t *testing.T) {
 	os.Remove(tmpPath)
 }
 
+//暂时不用的废弃用例
 func testSync115Client_UploadViaUrlFileStreamer_FromCDN(t *testing.T) {
 	cookie := skipWithoutCookie(t, "/root/.openclaw/115_cookie.txt")
 

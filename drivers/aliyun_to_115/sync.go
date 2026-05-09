@@ -396,8 +396,6 @@ func (f *urlFileStreamer) CacheFullAndWriter(up *model.UpdateProgress, w io.Writ
 	// 	resp.Body.Close()
 	// }
 
-	// Use a dedicated client with DisableKeepAlives to avoid HTTP/1.1 connection reuse
-	// race conditions when multiple goroutines call ReadAt concurrently on the same VirtualFile
 	httpClient := &http.Client{}
 
 	vf := &VirtualFile{

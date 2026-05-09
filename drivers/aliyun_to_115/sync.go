@@ -324,7 +324,11 @@ type VirtualFile struct {
 }
 
 func (v *VirtualFile) Read(p []byte) (n int, err error) {
-	return v.ReadAt(p, v.currOffset)
+	n, err = v.ReadAt(p, v.currOffset)
+	if n > 0 {
+		v.currOffset += int64(n) // 必须推进偏移量
+	}
+	return n, err
 }
 
 func (v *VirtualFile) ReadAt(p []byte, off int64) (n int, err error) {

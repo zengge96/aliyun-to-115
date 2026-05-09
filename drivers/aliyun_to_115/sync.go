@@ -352,8 +352,15 @@ func (v *VirtualFile) ReadAt(p []byte, off int64) (n int, err error) {
 	if resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK {
 		return 0, fmt.Errorf("http error: %d", resp.StatusCode)
 	}
+	// DEBUG: print Content-Range for first few chunks (before reading body)
+	if off < 10*1024*1024 && resp.Header.Get("Content-Range") != "" { // first 10MB
+		fmt.Printf("[DEBUG HTTP] ReadAt off=%d size=%d resp.Status=%s ContentRange=%s\n",
+			off, len(p), resp.Status, resp.Header.Get("Content-Range"))
+	}
 	n, err = io.ReadFull(resp.Body, p)
-	if err == io.ErrUnexpectedEOF {
+	if err == io.ErrUnexpectedEOF || err == io.EOF {
+		// Server returned fewer bytes than requested (e.g., CDN range limit)
+		// n contains actual bytes read
 		err = nil
 	}
 	return n, err

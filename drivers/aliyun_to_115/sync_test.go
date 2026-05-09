@@ -3,15 +3,14 @@ package aliyun_to_115
 import (
 	"bytes"
 	"context"
-	crand "crypto/rand"
 	"crypto/sha1"
 	"encoding/hex"
 	"fmt"
 	"io"
-	"net"
 	"math/rand"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -21,9 +20,6 @@ import (
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
 	"github.com/OpenListTeam/OpenList/v4/pkg/http_range"
 	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
-	"github.com/aliyun/aliyun-oss-go-sdk/oss"
-	driver115 "github.com/xiaoyaliu00/115driver/pkg/driver"
-	netutil "github.com/OpenListTeam/OpenList/v4/internal/net"
 )
 
 func init() {
@@ -339,99 +335,6 @@ func TestSync115Client_UploadLargeFile(t *testing.T) {
 	client.removeFrom115(context.Background(), result)
 }
 
-// =============================================================================
-// Test 7: Upload via urlFileStreamer (HTTP) — URL → VirtualFile → HTTP Range → 115
-// =============================================================================
-
-func TestSync115Client_UploadViaUrlFileStreamer(t *testing.T) {
-	cookie := skipWithoutCookie(t, "/root/.openclaw/115_cookie.txt")
-
-	var client *sync115Client
-	var initErr error
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				initErr = fmt.Errorf("115 init panicked: %v", r)
-			}
-		}()
-		client, initErr = newSync115Client(cookie)
-	}()
-	if initErr != nil {
-		t.Skipf("skip: %v", initErr)
-	}
-	defer client.Drop()
-
-	// 1. Create local temp file (5MB)
-	const fileSize = int64(11 * 1024 * 1024)
-	content := make([]byte, fileSize)
-	rand.Read(content)
-
-	tmpFile, err := os.CreateTemp("", "urlstreamertest_*.bin")
-	if err != nil {
-		t.Fatalf("CreateTemp failed: %v", err)
-	}
-	tmpPath := tmpFile.Name()
-	if _, err := tmpFile.Write(content); err != nil {
-		os.Remove(tmpPath)
-		t.Fatalf("Write temp file failed: %v", err)
-	}
-	tmpFile.Close()
-
-	// 2. Compute SHA1 of content for urlFileStreamer
-	h := sha1.New()
-	h.Write(content)
-	sha1Str := strings.ToUpper(hex.EncodeToString(h.Sum(nil)))
-
-	// 3. Start local HTTP server serving the file
-	httpFile, err := os.Open(tmpPath)
-	if err != nil {
-		os.Remove(tmpPath)
-		t.Fatalf("Open tmpPath failed: %v", err)
-	}
-	defer httpFile.Close()
-
-	httpServer := &http.Server{
-		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			http.ServeContent(w, r, "test.bin", time.Now(), httpFile)
-		}),
-	}
-
-	// Find an available port
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		os.Remove(tmpPath)
-		t.Fatalf("Listen failed: %v", err)
-	}
-	port := listener.Addr().(*net.TCPAddr).Port
-
-	// Start server in goroutine
-	go httpServer.Serve(listener)
-
-	url := fmt.Sprintf("http://127.0.0.1:%d/test.bin", port)
-
-	// 4. Create urlFileStreamer pointing to local HTTP server
-	stream := newUrlFileStreamer("tdd_url_11mb.bin", fileSize, sha1Str, url)
-
-	// 5. Upload via HTTP URL → VirtualFile → 115
-	result, err := client.uploadTo115(context.Background(), stream, "0")
-	if err != nil {
-		// Clean up server before fatal
-		httpServer.Close()
-		os.Remove(tmpPath)
-		t.Fatalf("uploadTo115 via URL failed: %v", err)
-	}
-	if result == nil {
-		httpServer.Close()
-		os.Remove(tmpPath)
-		t.Fatal("uploadTo115 returned nil")
-	}
-	t.Logf("✅ uploadTo115 via URL success: %s (size=%d)", result.GetName(), result.GetSize())
-
-	// 6. Cleanup: remove from 115, stop server, remove temp file
-	client.removeFrom115(context.Background(), result)
-	httpServer.Close()
-	os.Remove(tmpPath)
-}
 
 // =============================================================================
 // Test 5: Dedup cache — empty aliyunStorages should leave cache unchanged

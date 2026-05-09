@@ -332,8 +332,8 @@ func (v *VirtualFile) Read(p []byte) (n int, err error) {
 }
 
 func (v *VirtualFile) ReadAt(p []byte, off int64) (n int, err error) {
-	fmt.Printf("[DEBUG HTTP 1] off = %d, size = %d\n", off, off)
-	if off >= v.size && c > 0 {
+	fmt.Printf("[DEBUG HTTP 1] off = %d, size = %d\n", off, v.size)
+	if off >= v.size && v.size > 0 {
 		return 0, io.EOF
 	}
 	fmt.Printf("[DEBUG HTTP 2]\n")

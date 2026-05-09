@@ -396,11 +396,11 @@ func (f *urlFileStreamer) CacheFullAndWriter(up *model.UpdateProgress, w io.Writ
 	}
 
 	// HEAD 获取文件大小
-	var fileSize int64
-	if resp, err := http.DefaultClient.Head(f.url); err == nil {
-		fileSize, _ = strconv.ParseInt(resp.Header.Get("Content-Length"), 10, 64)
-		resp.Body.Close()
-	}
+	// var fileSize int64
+	// if resp, err := http.DefaultClient.Head(f.url); err == nil {
+	// 	fileSize, _ = strconv.ParseInt(resp.Header.Get("Content-Length"), 10, 64)
+	// 	resp.Body.Close()
+	// }
 
 	// Use a dedicated client with DisableKeepAlives to avoid HTTP/1.1 connection reuse
 	// race conditions when multiple goroutines call ReadAt concurrently on the same VirtualFile
@@ -414,7 +414,8 @@ func (f *urlFileStreamer) CacheFullAndWriter(up *model.UpdateProgress, w io.Writ
 	vf := &VirtualFile{
 		url:    f.url,
 		client: httpClient,
-		size:   fileSize,
+		//size:   fileSize,
+		size:   size,
 		ctx:    context.Background(),
 	}
 	f.file = vf

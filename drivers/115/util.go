@@ -374,10 +374,10 @@ func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.Upload
 		err       error
 	)
 
-	fmt.Printf("[DEBUG Multi] START fileName=%s fileSize=%d dirID=%s\n", s.GetName(), fileSize, dirID)
+	//fmt.Printf("[DEBUG Multi] START fileName=%s fileSize=%d dirID=%s\n", s.GetName(), fileSize, dirID)
 
 	tmpF, err := s.CacheFullAndWriter(&up, nil)
-	fmt.Printf("[DEBUG Multi] CacheFullAndWriter tmpF=%T err=%v\n", tmpF, err)
+	//fmt.Printf("[DEBUG Multi] CacheFullAndWriter tmpF=%T err=%v\n", tmpF, err)
 	if err != nil {
 		return nil, err
 	}
@@ -398,7 +398,7 @@ func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.Upload
 	if len(ak) > 8 {
 		ak = ak[:8] + "..."
 	}
-	fmt.Printf("[DEBUG Multi] GetOSSToken ok AccessKeyID=%s SecurityToken_len=%d\n", ak, len(ossToken.SecurityToken))
+	//fmt.Printf("[DEBUG Multi] GetOSSToken ok AccessKeyID=%s SecurityToken_len=%d\n", ak, len(ossToken.SecurityToken))
 
 	if ossClient, err = netutil.NewOSSClient(driver115.OSSEndpoint, ossToken.AccessKeyID, ossToken.AccessKeySecret, oss.EnableMD5(true), oss.EnableCRC(true)); err != nil {
 		return nil, err
@@ -417,7 +417,7 @@ func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.Upload
 	if chunks, err = SplitFile(fileSize); err != nil {
 		return nil, err
 	}
-	fmt.Printf("[DEBUG Multi] SplitFile done chunks=%d totalSize=%d\n", len(chunks), fileSize)
+	//fmt.Printf("[DEBUG Multi] SplitFile done chunks=%d totalSize=%d\n", len(chunks), fileSize)
 
 	if imur, err = bucket.InitiateMultipartUpload(params.Object,
 		oss.SetHeader(driver115.OssSecurityTokenHeaderName, ossToken.SecurityToken),
@@ -426,7 +426,7 @@ func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.Upload
 	); err != nil {
 		return nil, err
 	}
-	fmt.Printf("[DEBUG Multi] InitiateMultipartUpload ok uploadID=%s object=%s\n", imur.UploadID, params.Object)
+	//fmt.Printf("[DEBUG Multi] InitiateMultipartUpload ok uploadID=%s object=%s\n", imur.UploadID, params.Object)
 
 	wg := sync.WaitGroup{}
 	wg.Add(len(chunks))
@@ -466,17 +466,17 @@ func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.Upload
 					}
 					buf := make([]byte, chunk.Size)
 					if _, err = tmpF.ReadAt(buf, chunk.Offset); err != nil && !errors.Is(err, io.EOF) {
-						fmt.Printf("[DEBUG Multi] chunk[%d] ReadAt FAIL offset=%d size=%d err=%v\n", chunk.Number, chunk.Offset, chunk.Size, err)
+						//fmt.Printf("[DEBUG Multi] chunk[%d] ReadAt FAIL offset=%d size=%d err=%v\n", chunk.Number, chunk.Offset, chunk.Size, err)
 						continue
 					}
 					bufSHA1 := sha1.Sum(buf[:chunk.Size])
-					fmt.Printf("[DEBUG Multi] chunk[%d] ReadAt OK offset=%d size=%d bufSHA1=%X\n", chunk.Number, chunk.Offset, chunk.Size, bufSHA1)
+					//fmt.Printf("[DEBUG Multi] chunk[%d] ReadAt OK offset=%d size=%d bufSHA1=%X\n", chunk.Number, chunk.Offset, chunk.Size, bufSHA1)
 					if part, err = bucket.UploadPart(imur, driver.NewLimitedUploadStream(ctx, bytes.NewReader(buf)),
 						chunk.Size, chunk.Number, driver115.OssOption(params, ossToken)...); err == nil {
-						fmt.Printf("[DEBUG Multi] chunk[%d] UploadPart OK etag=%s\n", chunk.Number, part.ETag)
+						//fmt.Printf("[DEBUG Multi] chunk[%d] UploadPart OK etag=%s\n", chunk.Number, part.ETag)
 						break
 					} else {
-						fmt.Printf("[DEBUG Multi] chunk[%d] UploadPart FAIL err=%v\n", chunk.Number, err)
+						//fmt.Printf("[DEBUG Multi] chunk[%d] UploadPart FAIL err=%v\n", chunk.Number, err)
 					}
 				}
 				if err != nil {

@@ -418,9 +418,6 @@ func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.Upload
 		return nil, err
 	}
 	fmt.Printf("[DEBUG Multi] SplitFile done chunks=%d totalSize=%d\n", len(chunks), fileSize)
-	for i, c := range chunks {
-		fmt.Printf("[DEBUG Multi]   chunk[%d] number=%d offset=%d size=%d\n", i, c.Number, c.Offset, c.Size)
-	}
 
 	if imur, err = bucket.InitiateMultipartUpload(params.Object,
 		oss.SetHeader(driver115.OssSecurityTokenHeaderName, ossToken.SecurityToken),

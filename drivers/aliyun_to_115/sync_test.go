@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"net"
 	"net/http"
 	"os"
 	"regexp"
@@ -454,10 +455,10 @@ func TestSync115Client_UploadViaUrlFileStreamer(t *testing.T) {
 }
 
 // =============================================================================
-// Test 8: Upload via urlFileStreamer (HTTP) — URL → VirtualFile → HTTP Range → 115
+// Test 8: Upload via urlFileStreamer (CDN URL) — URL → VirtualFile → HTTP Range → 115
 // =============================================================================
 
-func TestSync115Client_UploadViaUrlFileStreamer(t *testing.T) {
+func TestSync115Client_UploadViaUrlFileStreamer_FromCDN(t *testing.T) {
 	cookie := skipWithoutCookie(t, "/root/.openclaw/115_cookie.txt")
 
 	var syncClient *sync115Client

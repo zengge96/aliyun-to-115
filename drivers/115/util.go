@@ -515,23 +515,23 @@ LOOP:
 
 	// 不知道啥原因，oss那边分片上传不计算sha1，导致115服务器校验错误
 	// params.Callback.Callback = strings.ReplaceAll(params.Callback.Callback, "${sha1}", params.SHA1)
-	fmt.Printf("[DEBUG Multi] CompleteMultipartUpload partsCount=%d\n", len(parts))
-	for i, p := range parts {
-		fmt.Printf("[DEBUG Multi]   part[%d] ETag=%s PartNumber=%d\n", i, p.ETag, p.PartNumber)
-	}
+	//fmt.Printf("[DEBUG Multi] CompleteMultipartUpload partsCount=%d\n", len(parts))
+	//for i, p := range parts {
+		//fmt.Printf("[DEBUG Multi]   part[%d] ETag=%s PartNumber=%d\n", i, p.ETag, p.PartNumber)
+	//}
 	if _, err := bucket.CompleteMultipartUpload(imur, parts, append(
 		driver115.OssOption(params, ossToken),
 		oss.CallbackResult(&bodyBytes),
 	)...); err != nil {
 		return nil, err
 	}
-	fmt.Printf("[DEBUG Multi] CompleteMultipartUpload raw_response=%s\n", string(bodyBytes))
+	//fmt.Printf("[DEBUG Multi] CompleteMultipartUpload raw_response=%s\n", string(bodyBytes))
 
 	var uploadResult UploadResult
 	if err = json.Unmarshal(bodyBytes, &uploadResult); err != nil {
 		return nil, err
 	}
-	fmt.Printf("[DEBUG Multi] uploadResult=%+v\n", uploadResult)
+	//fmt.Printf("[DEBUG Multi] uploadResult=%+v\n", uploadResult)
 	return &uploadResult, uploadResult.Err(string(bodyBytes))
 }
 

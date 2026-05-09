@@ -3,12 +3,13 @@ package aliyun_to_115
 import (
 	"bytes"
 	"context"
+	crand "crypto/rand"
 	"crypto/sha1"
 	"encoding/hex"
 	"fmt"
 	"io"
-	"math/rand"
 	"net"
+	"math/rand"
 	"net/http"
 	"os"
 	"strings"
@@ -20,6 +21,9 @@ import (
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
 	"github.com/OpenListTeam/OpenList/v4/pkg/http_range"
 	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
+	"github.com/aliyun/aliyun-oss-go-sdk/oss"
+	driver115 "github.com/xiaoyaliu00/115driver/pkg/driver"
+	netutil "github.com/OpenListTeam/OpenList/v4/internal/net"
 )
 
 func init() {
@@ -449,5 +453,182 @@ func TestSyncDedupCache(t *testing.T) {
 	}
 	if len(d.syncedCache) != 1 {
 		t.Errorf("cache size = %d, want 1", len(d.syncedCache))
+	}
+}
+// =============================================================================
+// Test: CDN Real Upload — 5 chunks should get 5 different ETags
+// =============================================================================
+func TestVirtualFile_CDNRealUpload_DifferentETags(t *testing.T) {
+	// 1. Read proxy URL from ~/.openclaw/workspace/url.txt
+	urlData, err := os.ReadFile(os.ExpandEnv("$HOME/.openclaw/workspace/url.txt"))
+	if err != nil {
+		t.Skipf("skip: no url.txt: %v", err)
+	}
+	proxyURL := strings.TrimSpace(string(urlData))
+	if proxyURL == "" {
+		t.Skip("skip: empty url.txt")
+	}
+
+	// 2. Follow 302 to get CDN URL
+	client302 := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+	resp, err := client302.Get(proxyURL)
+	if err != nil {
+		t.Fatalf("proxy URL request failed: %v", err)
+	}
+	resp.Body.Close()
+	cdnURL := resp.Header.Get("Location")
+	if cdnURL == "" {
+		t.Fatalf("no Location header in 302 response")
+	}
+	t.Logf("CDN URL: %s", cdnURL)
+
+	// 3. Get 115 cookie and init sync115Client (for VirtualFile reading)
+	cookie := skipWithoutCookie(t, "/root/.openclaw/115_cookie.txt")
+	syncClient, err := newSync115Client(cookie)
+	if err != nil {
+		t.Skipf("skip: newSync115Client failed: %v", err)
+	}
+	defer syncClient.Drop()
+
+	// 4. Create urlFileStreamer → VirtualFile
+	const fileSize = int64(5 * 1024 * 1024)
+	name := "cdn_etag_test_5mb.bin"
+	stream := newUrlFileStreamer(name, fileSize, "", cdnURL)
+	vf, err := stream.CacheFullAndWriter(nil, nil)
+	if err != nil {
+		t.Fatalf("CacheFullAndWriter failed: %v", err)
+	}
+
+	// 5. Verify 5 different chunks (SHA1)
+	const chunkSize = int64(1024 * 1024)
+	chunkHashes := make([]string, 5)
+	for i := 0; i < 5; i++ {
+		offset := int64(i) * chunkSize
+		buf := make([]byte, chunkSize)
+		n, err := vf.ReadAt(buf, offset)
+		if err != nil && err != io.EOF {
+			t.Fatalf("ReadAt offset=%d failed: %v", offset, err)
+		}
+		h := sha1.New()
+		h.Write(buf[:n])
+		chunkHashes[i] = strings.ToUpper(hex.EncodeToString(h.Sum(nil)))
+		t.Logf("chunk[%d] offset=%d size=%d sha1=%s", i, offset, n, chunkHashes[i])
+	}
+	uniqueHashes := make(map[string]bool)
+	for _, h := range chunkHashes {
+		uniqueHashes[h] = true
+	}
+	if len(uniqueHashes) != 5 {
+		t.Errorf("chunks do NOT have unique content: got %d unique, want 5", len(uniqueHashes))
+	}
+
+	// 6. Get bucket via rapidUpload using driver115.Pan115Client
+	// Parse cookie string "UID=xxx;CID=xxx;SEID=xxx;KID=xxx" into map
+	cookieMap := make(map[string]string)
+	for _, part := range strings.Split(cookie, ";") {
+		part = strings.TrimSpace(part)
+		if idx := strings.IndexByte(part, '='); idx > 0 {
+			cookieMap[strings.TrimSpace(part[:idx])] = strings.TrimSpace(part[idx+1:])
+		}
+	}
+	driverClient := driver115.New()
+	driverClient.ImportCookies(cookieMap, ".115.com")
+
+	// Create small temp file to get UploadOSSParams (bucket, callback)
+	tmpFile, err := os.CreateTemp("", "115bucket_*.bin")
+	if err != nil {
+		t.Fatalf("CreateTemp failed: %v", err)
+	}
+	tmpPath := tmpFile.Name()
+	defer os.Remove(tmpPath)
+	defer tmpFile.Close()
+
+	randBuf := make([]byte, 512)
+	io.ReadFull(crand.Reader, randBuf)
+	tmpFile.Write(randBuf)
+	tmpFile.Sync()
+	tmpFile.Close()
+
+	tmpF, err := os.Open(tmpPath)
+	if err != nil {
+		t.Fatalf("Open temp file failed: %v", err)
+	}
+	defer tmpF.Close()
+	tmpInfo, _ := tmpF.Stat()
+
+	h := sha1.New()
+	io.Copy(h, tmpF)
+	fullHash := strings.ToUpper(hex.EncodeToString(h.Sum(nil)))
+	tmpF.Seek(0, 0)
+
+	rapidResp, err := driverClient.RapidUpload(tmpInfo.Size(), "test_bucket.bin", "0", fullHash, fullHash, tmpF)
+	if err != nil {
+		t.Fatalf("RapidUpload to get bucket failed: %v", err)
+	}
+	bucketName := rapidResp.Bucket
+	t.Logf("Got bucket: %s, callback: %s", bucketName, rapidResp.Callback)
+
+	ossParams := &driver115.UploadOSSParams{
+		Bucket:   rapidResp.Bucket,
+		Callback: rapidResp.Callback,
+		Object:   rapidResp.Object,
+	}
+
+	// 7. Get OSS token and create OSS client
+	ossToken, err := driverClient.GetOSSToken()
+	if err != nil {
+		t.Fatalf("GetOSSToken failed: %v", err)
+	}
+	ossClient, err := netutil.NewOSSClient(driver115.OSSEndpoint, ossToken.AccessKeyID, ossToken.AccessKeySecret,
+		oss.EnableMD5(true), oss.EnableCRC(true))
+	if err != nil {
+		t.Fatalf("NewOSSClient failed: %v", err)
+	}
+	bucket, err := ossClient.Bucket(bucketName)
+	if err != nil {
+		t.Fatalf("Bucket(%s) failed: %v", bucketName, err)
+	}
+
+	// 8. InitiateMultipartUpload
+	objectKey := fmt.Sprintf("test_etag_%d.bin", time.Now().UnixNano())
+	imur, err := bucket.InitiateMultipartUpload(objectKey,
+		oss.SetHeader(driver115.OssSecurityTokenHeaderName, ossToken.SecurityToken),
+		oss.UserAgentHeader(driver115.OSSUserAgent),
+		oss.EnableSha1(), oss.Sequential(),
+	)
+	if err != nil {
+		t.Fatalf("InitiateMultipartUpload failed: %v", err)
+	}
+	t.Logf("uploadID=%s object=%s", imur.UploadID, objectKey)
+
+	// 9. Upload 5 parts and collect ETags
+	etags := make([]string, 5)
+	for i := 0; i < 5; i++ {
+		offset := int64(i) * chunkSize
+		buf := make([]byte, chunkSize)
+		n, err := vf.ReadAt(buf, offset)
+		if err != nil && err != io.EOF {
+			t.Fatalf("ReadAt offset=%d failed: %v", offset, err)
+		}
+		part, err := bucket.UploadPart(imur, bytes.NewReader(buf[:n]), int64(n), i+1,
+			driver115.OssOption(ossParams, ossToken)...)
+		if err != nil {
+			t.Fatalf("UploadPart chunk[%d] failed: %v", i, err)
+		}
+		etags[i] = part.ETag
+		t.Logf("part[%d] offset=%d etag=%s", i+1, offset, etags[i])
+	}
+
+	// 10. Verify 5 different ETags
+	uniqueETags := make(map[string]bool)
+	for _, e := range etags {
+		uniqueETags[e] = true
+	}
+	if len(uniqueETags) != 5 {
+		t.Errorf("ETags NOT all different: got %v (unique=%d)", etags, len(uniqueETags))
+	} else {
+		t.Logf("✅ all 5 chunks have different ETags: %v", etags)
 	}
 }

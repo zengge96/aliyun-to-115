@@ -491,9 +491,6 @@ func testSync115Client_UploadViaUrlFileStreamer_FromCDN(t *testing.T) {
 		t.Fatalf("GET alistURL failed: %v", err)
 	}
 	respInit.Body.Close()
-	if respInit.Request.URL.Host == "47.104.92.112:39123" {
-		t.Skipf("skip: alist server not reachable from this host")
-	}
 
 	cdnURL := respInit.Request.URL.String()
 	t.Logf("cdnURL: %s", cdnURL)

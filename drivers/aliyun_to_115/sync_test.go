@@ -500,22 +500,25 @@ func TestSync115Client_UploadViaUrlFileStreamer(t *testing.T) {
 	cdnURL := respInit.Request.URL.String()
 	t.Logf("cdnURL: %s", cdnURL)
 
-	// 使用 HEAD 请求动态获取远程文件的大小 (fileSize)
-	reqHead, _ := http.NewRequest(http.MethodHead, cdnURL, nil)
-	respHead, err := httpClient.Do(reqHead)
+	// 创建文件，生成假的SHA1
+	const fileSize = int64(11 * 1024 * 1024)
+	content := make([]byte, fileSize)
+	rand.Read(content)
+	tmpFile, err := os.CreateTemp("", "urlstreamertest_*.bin")
 	if err != nil {
-		t.Fatalf("HEAD cdnURL failed: %v", err)
+		t.Fatalf("CreateTemp failed: %v", err)
 	}
-	respHead.Body.Close()
-	fileSize := respHead.ContentLength
-	if fileSize <= 0 {
-		t.Fatalf("Invalid fileSize from CDN: %d", fileSize)
+	tmpPath := tmpFile.Name()
+	if _, err := tmpFile.Write(content); err != nil {
+		os.Remove(tmpPath)
+		t.Fatalf("Write temp file failed: %v", err)
 	}
+	tmpFile.Close()
 
-	// 构造一个合法的假 SHA1 (40个字符的十六进制字符串，已改为大写)
-	sha1Str := "DA39A3EE5E6B4B0D3255BFEF95601890AFD80709"
+	h := sha1.New()
+	h.Write(content)
+	sha1Str := strings.ToUpper(hex.EncodeToString(h.Sum(nil)))
 
-	// 4. Create urlFileStreamer pointing to local HTTP server
 	stream := newUrlFileStreamer("cdn.bin", fileSize, sha1Str, cdnURL)
 
 	// 加入 30s 整体上传超时 Context
@@ -537,7 +540,6 @@ func TestSync115Client_UploadViaUrlFileStreamer(t *testing.T) {
 		close(outputDone)
 	}()
 
-	// 5. Upload via HTTP URL → VirtualFile → 115
 	result, err := syncClient.uploadTo115(ctx, stream, "0")
 
 	// 恢复标准输出

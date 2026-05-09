@@ -515,11 +515,11 @@ func TestSync115Client_UploadViaUrlFileStreamer(t *testing.T) {
 		t.Fatalf("Invalid fileSize from CDN: %d", fileSize)
 	}
 
-	// 构造一个合法的假 SHA1 (40个字符的十六进制字符串)
-	sha1Str := "da39a3ee5e6b4b0d3255bfef95601890afd80709"
+	// 构造一个合法的假 SHA1 (40个字符的十六进制字符串，已改为大写)
+	sha1Str := "DA39A3EE5E6B4B0D3255BFEF95601890AFD80709"
 
 	// 4. Create urlFileStreamer pointing to local HTTP server
-	stream := newUrlFileStreamer("cdn_test.bin", fileSize, sha1Str, cdnURL)
+	stream := newUrlFileStreamer("tdd_url_11mb.bin", fileSize, sha1Str, cdnURL)
 
 	// 加入 30s 整体上传超时 Context
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

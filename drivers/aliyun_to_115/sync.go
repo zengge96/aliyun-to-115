@@ -332,32 +332,33 @@ func (v *VirtualFile) Read(p []byte) (n int, err error) {
 }
 
 func (v *VirtualFile) ReadAt(p []byte, off int64) (n int, err error) {
+	fmt.Printf("[DEBUG HTTP 1]")
 	if off >= v.size && v.size > 0 {
 		return 0, io.EOF
 	}
+	fmt.Printf("[DEBUG HTTP 2]")
 	endPos := off + int64(len(p)) - 1
 	if v.size > 0 && endPos >= v.size {
 		endPos = v.size - 1
 	}
+	fmt.Printf("[DEBUG HTTP 3]")
 	req, err := http.NewRequestWithContext(v.ctx, http.MethodGet, v.url, nil)
 	if err != nil {
 		return 0, err
 	}
+	fmt.Printf("[DEBUG HTTP 4]")
 	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", off, endPos))
 	resp, err := v.client.Do(req)
 	if err != nil {
 		return 0, err
 	}
+	fmt.Printf("[DEBUG HTTP 5]")
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK {
 		return 0, fmt.Errorf("http error: %d", resp.StatusCode)
 	}
-	// DEBUG: print Content-Range for first few chunks (before reading body)
-	// if off < 10*1024*1024 && resp.Header.Get("Content-Range") != "" { // first 10MB
-	if true {
-		fmt.Printf("[DEBUG HTTP] ReadAt off=%d size=%d resp.Status=%s ContentRange=%s\n",
-			off, len(p), resp.Status, resp.Header.Get("Content-Range"))
-	}
+	fmt.Printf("[DEBUG HTTP] ReadAt off=%d size=%d resp.Status=%s ContentRange=%s\n", off, len(p), resp.Status, resp.Header.Get("Content-Range"))
+	
 	n, err = io.ReadFull(resp.Body, p)
 	if err == io.ErrUnexpectedEOF || err == io.EOF {
 		// Server returned fewer bytes than requested (e.g., CDN range limit)

@@ -35,6 +35,9 @@ func (c *sync115Client) getOrCreateDir(ctx context.Context, parentID string, dir
 	if dirName == "" || dirName == "/" {
 		return parentID, nil
 	}
+
+	time.Sleep(1 * time.Second)
+	
 	// 1. 列出当前目录检查是否已存在
 	objs, err := c.p115.List(ctx, &model.Object{ID: parentID}, model.ListArgs{})
 	if err == nil {

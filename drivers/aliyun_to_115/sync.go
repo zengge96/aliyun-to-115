@@ -176,7 +176,7 @@ func (d *AliyunTo115) walkAndSync(ctx context.Context, aliyun aliyunStorage, cur
 		} else {
 			stats.total++
 			fullPath := currentPath + f.GetName()
-			d.processSingleFile(ctx, fullPath, p115ParentID, stats)
+			d.processSingleFile(ctx, fullPath, stats)
 		}
 	}
 	return nil
@@ -191,7 +191,7 @@ func (d *AliyunTo115) getOrCreate115DirID(ctx context.Context, fullPath string) 
 		return "", fmt.Errorf("路径存在但不是文件夹: %s", fullPath)
 	}
 
-	err = fs.Mkdir(ctx, fullPath)
+	err = op.Mkdir(ctx, fullPath)
 	if err != nil {
 		return "", fmt.Errorf("创建目录失败: %s, err: %v", fullPath, err)
 	}
@@ -220,7 +220,7 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, fullPath string, st
 	}
 
 	aliyunMountPath := aliyun.GetStorage().MountPath
-	pan115FullDirPath := path.Join(d.GetStorage().MountPath, pan115FullDirPath)
+	pan115FullDirPath := path.Join(d.GetStorage().MountPath, aliyunMountPath)
 	
 	p115DirID, err := d.getOrCreate115DirID(ctx, pan115FullDirPath)
 	if err != nil {

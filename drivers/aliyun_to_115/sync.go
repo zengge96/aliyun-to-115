@@ -191,7 +191,7 @@ func (d *AliyunTo115) getOrCreate115DirID(ctx context.Context, fullPath string) 
 		return "", fmt.Errorf("路径存在但不是文件夹: %s", fullPath)
 	}
 
-	err = op.MakeDir(ctx, d.GetStorage(), fullPath)
+	err = op.MakeDir(ctx, d, fullPath)
 	if err != nil {
 		return "", fmt.Errorf("创建目录失败: %s, err: %v", fullPath, err)
 	}
@@ -224,9 +224,6 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, fullPath string, st
 		fmt.Printf("[aliyun_to_115] 准备115目录失败 [%s]: %v\n", fullPath, err)
 		return
 	}
-	// ----------------------------------------------
-
-	fmt.Printf("pan115FullDirPath=%s, p115DirID=%s\n", fullPath, p115DirID)
 
 	// 缓存逻辑
 	aliyunMountPath := aliyun.GetStorage().MountPath

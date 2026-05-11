@@ -292,6 +292,7 @@ func (d *AliyunTo115) getOrCreateDirID(ctx context.Context, fullPath string) (st
 		return "", fmt.Errorf("创建目录失败 [%s]: 错误: %w", fullPath, err)
 	}
 
+	time.Sleep(500 * time.Millisecond)
 	fs.List(ctx, parentPath, &fs.ListArgs{
 			NoLog: true,
 			Refresh: true,

@@ -185,7 +185,7 @@ func (d *AliyunTo115) doSync() {
 		stats.total, stats.skipped, stats.rapid, stats.normal, stats.failed)
 }
 
-func (d *AliyunTo115) walkAndSync(ctx context.Context, aliyun aliyunStorage, currentPath, aliParentID, stats *syncStats) error {
+func (d *AliyunTo115) walkAndSync(ctx context.Context, aliyun aliyunStorage, currentPath, aliParentID string, stats *syncStats) error {
 	files, err := aliyun.List(ctx, &model.Object{ID: aliParentID}, model.ListArgs{})
 	if err != nil {
 		return err

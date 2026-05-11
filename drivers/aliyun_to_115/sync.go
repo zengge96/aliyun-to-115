@@ -193,7 +193,6 @@ func (d *AliyunTo115) walkAndSync(ctx context.Context, aliyun aliyunStorage, cur
 
 	for _, f := range files {
 		if f.IsDir() {
-			// 同步创建目录
 			subPath := currentPath + f.GetName() + "/"
 			_ = d.walkAndSync(ctx, aliyun, subPath, f.GetID(), stats)
 		} else {

@@ -191,7 +191,11 @@ func (d *AliyunTo115) getOrCreate115DirID(ctx context.Context, fullPath string) 
 		return "", fmt.Errorf("路径存在但不是文件夹: %s", fullPath)
 	}
 
-	err = op.Mkdir(ctx, fullPath)
+	storage, actualPath, err := op.GetStorageAndActualPath(fullPath)
+	if err != nil {
+		return errors.WithMessage(err, "failed get storage")
+	}
+	err = op.MakeDir(ctx, storage, actualPath)
 	if err != nil {
 		return "", fmt.Errorf("创建目录失败: %s, err: %v", fullPath, err)
 	}

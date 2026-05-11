@@ -154,19 +154,14 @@ func (d *AliyunTo115) doSync() {
 					}
 				}
 
-				// dstPath：如果 src 是 HTTP，则直接用 srcPath；否则从 src 提取扩展名替换到 dst
+
 				dstPath := dstRaw
-				if strings.HasPrefix(srcRaw, "http://") || strings.HasPrefix(srcRaw, "https://") {
-					// HTTP 源：dst 直接用解析后的 srcPath
-					dstPath = srcPath
-				} else {
-					// 本地路径：扩展名替换
-					srcExt := filepath.Ext(srcPath)
-					if srcExt != "" {
-						ext := filepath.Ext(dstRaw)
-						if ext != "" {
-							dstPath = strings.TrimSuffix(dstRaw, ext) + srcExt
-						}
+				// 扩展名替换
+				srcExt := filepath.Ext(srcPath)
+				if srcExt != "" {
+					ext := filepath.Ext(dstRaw)
+					if ext != "" {
+						dstPath = strings.TrimSuffix(dstRaw, ext) + srcExt
 					}
 				}
 

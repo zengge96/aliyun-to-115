@@ -182,6 +182,15 @@ func (d *AliyunTo115) walkAndSync(ctx context.Context, aliyun aliyunStorage, cur
 }
 
 func (d *AliyunTo115) getOrCreate115DirID(ctx context.Context, fullPath string) (string, error) {
+	fullPath = path.Clean(fullPath)
+	if fullPath == "/" || fullPath == "." || fullPath == "" {
+		dirObj, err := fs.Get(ctx, "/", &fs.GetArgs{})
+		if err != nil {
+			return "", fmt.Errorf("获取根目录失败: %v", err)
+		}
+		return dirObj.GetID(), nil
+	}
+
 	dirObj, err := fs.Get(ctx, fullPath, &fs.GetArgs{})
 	if err == nil {
 		if dirObj.IsDir() {
@@ -189,15 +198,24 @@ func (d *AliyunTo115) getOrCreate115DirID(ctx context.Context, fullPath string) 
 		}
 		return "", fmt.Errorf("路径存在但不是文件夹: %s", fullPath)
 	}
+	parentPath := path.Dir(fullPath)
+	_, err = d.getOrCreate115DirID(ctx, parentPath)
+	if err != nil {
+		return "", err
+	}
 
 	err = op.MakeDir(ctx, d, fullPath)
 	if err != nil {
+		dirObj, retryErr := fs.Get(ctx, fullPath, &fs.GetArgs{})
+		if retryErr == nil && dirObj.IsDir() {
+			return dirObj.GetID(), nil
+		}
 		return "", fmt.Errorf("创建目录失败: %s, err: %v", fullPath, err)
 	}
 
 	dirObj, err = fs.Get(ctx, fullPath, &fs.GetArgs{})
 	if err != nil {
-		return "", fmt.Errorf("获取新建目录 ID 失败: %s", fullPath)
+		return "", fmt.Errorf("获取新建目录 ID 失败: %s, err: %v", fullPath, err)
 	}
 	return dirObj.GetID(), nil
 }

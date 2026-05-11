@@ -175,7 +175,7 @@ func (d *AliyunTo115) doSync() {
 		fmt.Printf("[aliyun_to_115] 正在处理阿里存储: %s\n", mountPath)
 
 		aliRootID := aliyun.GetRootId()
-		err = d.walkAndSync(ctx, aliyun, mountPath + "/", aliRootID, stats)
+		err := d.walkAndSync(ctx, aliyun, mountPath + "/", aliRootID, stats)
 		if err != nil {
 			fmt.Printf("[aliyun_to_115] walk error for %s: %v\n", mountPath, err)
 		}

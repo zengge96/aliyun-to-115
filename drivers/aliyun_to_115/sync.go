@@ -2,6 +2,7 @@ package aliyun_to_115
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -130,11 +131,30 @@ func (d *AliyunTo115) doSync() {
 	if _, err := os.Stat(strmFile); err == nil {
 		// strm.txt 存在，切换为文件同步模式
 		strmData, err := os.ReadFile(strmFile)
+		checkpointFile := filepath.Join(cwd, "strm_sync_checkpoint.json")
 		if err != nil {
 			fmt.Printf("[aliyun_to_115] 读取 strm.txt 失败: %v\n", err)
 		} else {
+			// 读取断点
+			startIndex := 0
+			if data, err := os.ReadFile(checkpointFile); err == nil {
+				var ck struct {
+					LastIndex int `json:"last_index"`
+					Total     int `json:"total"`
+				}
+				if json.Unmarshal(data, &ck) == nil {
+					startIndex = ck.LastIndex + 1
+					fmt.Printf("[aliyun_to_115] 断点续传：从第 %d 行继续（共 %d 行）\n", startIndex, ck.Total)
+				}
+			}
+
 			lines := strings.Split(strings.TrimSpace(string(strmData)), "\n")
-			for _, line := range lines {
+			totalLines := len(lines)
+
+			for i, line := range lines {
+				if i < startIndex {
+					continue
+				}
 				line = strings.TrimSpace(line)
 				if line == "" || strings.HasPrefix(line, "#") {
 					continue
@@ -168,10 +188,16 @@ func (d *AliyunTo115) doSync() {
 
 				fmt.Printf("[aliyun_to_115] strm: src=%s -> dst=%s\n", srcPath, dstPath)
 				d.processSingleFile(ctx, srcPath, dstPath, stats)
+
+				// 更新断点
+				if ckData, err := json.Marshal(map[string]int{"last_index": i, "total": totalLines}); err == nil {
+					os.WriteFile(checkpointFile, ckData, 0644)
+				}
 			}
 		}
 		fmt.Printf("[aliyun_to_115] ===== strm模式同步完成: 发现%v / 跳过%v / 秒传%v / 正常%v / 失败%v =====\n",
 			stats.total, stats.skipped, stats.rapid, stats.normal, stats.failed)
+		os.Remove(checkpointFile)
 		return
 	}
 

@@ -654,21 +654,21 @@ func chunksProducer(ch chan oss.FileChunk, chunks []oss.FileChunk) {
 
 func SplitFile(fileSize int64) (chunks []oss.FileChunk, err error) {
 	for i := int64(1); i < 10; i++ {
-		if fileSize < i*utils.GB { // 文件大小小于iGB时分为i*1000片
-			if chunks, err = SplitFileByPartNum(fileSize, int(i*1000)); err != nil {
+		if fileSize < i*utils.GB { // 文件大小小于iGB时分为i*200片
+			if chunks, err = SplitFileByPartNum(fileSize, int(i*200)); err != nil {
 				return
 			}
 			break
 		}
 	}
-	if fileSize > 9*utils.GB { // 文件大小大于9GB时分为10000片
-		if chunks, err = SplitFileByPartNum(fileSize, 10000); err != nil {
+	if fileSize > 9*utils.GB { // 文件大小大于9GB时分为2000片
+		if chunks, err = SplitFileByPartNum(fileSize, 2000); err != nil {
 			return
 		}
 	}
-	// 单个分片大小不能小于100KB
-	if chunks[0].Size < 100*utils.KB {
-		if chunks, err = SplitFileByPartSize(fileSize, 100*utils.KB); err != nil {
+	// 单个分片大小不能小于1MB
+	if chunks[0].Size < 1000*utils.KB {
+		if chunks, err = SplitFileByPartSize(fileSize, 1000*utils.KB); err != nil {
 			return
 		}
 	}

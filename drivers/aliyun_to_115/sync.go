@@ -186,7 +186,7 @@ func (d *AliyunTo115) doSync() {
 					}
 				}
 
-				fmt.Printf("[aliyun_to_115] strm: src=%s -> dst=%s\n", srcPath, dstPath)
+				//fmt.Printf("[aliyun_to_115] strm: src=%s -> dst=%s\n", srcPath, dstPath)
 				d.processSingleFile(ctx, srcPath, dstPath, stats)
 
 				// 更新断点

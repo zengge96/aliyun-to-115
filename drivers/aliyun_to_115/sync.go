@@ -183,11 +183,12 @@ func (d *AliyunTo115) walkAndSync(ctx context.Context, aliyun aliyunStorage, cur
 func (d *AliyunTo115) processSingleFile(ctx context.Context, f model.Obj, fullPath string, p115DirID string, stats *syncStats) {
 
 	fmt.Printf("[aliyun_to_115] fullPath: %s\n", fullPath)
-	aliyun, _, err := op.GetStorageAndActualPath(fullPath)
+	aliyun, actualPath, err := op.GetStorageAndActualPath(fullPath)
 	if err != nil {
 		fmt.Printf("[aliyun_to_115] 驱动不存在\n")
 		return
 	}
+	fmt.Printf("[aliyun_to_115] actualPath: %s\n", actualPath)
 
 	mountPath := d.GetStorage().MountPath
 	cacheKey := mountPath + "/" + f.GetID()

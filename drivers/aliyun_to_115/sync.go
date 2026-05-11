@@ -182,40 +182,6 @@ func (d *AliyunTo115) walkAndSync(ctx context.Context, aliyun aliyunStorage, cur
 	return nil
 }
 
-func MkdirAll(ctx context.Context, actualPath string) error {
-	actualPath = strings.TrimSuffix(actualPath, "/")
-	if actualPath == "" || actualPath == "." || actualPath == "/" {
-		return nil
-	}
-
-	_, err := fs.Get(ctx, actualPath, &fs.GetArgs{})
-	if err == nil {
-		return nil
-	}
-
-	if !fs.IsErrNotFound(err) {
-		return err
-	}
-
-	parent := path.Dir(actualPath)
-	if parent != "/" && parent != "." {
-		err = MkdirAll(ctx, parent)
-		if err != nil {
-			return err
-		}
-	}
-
-	err = fs.Mkdir(ctx, actualPath)
-	if err != nil {
-		if strings.Contains(err.Error(), "already exists") {
-			return nil
-		}
-		return err
-	}
-
-	return nil
-}
-
 func (d *AliyunTo115) getOrCreate115DirID(ctx context.Context, fullPath string) (string, error) {
 	dirObj, err := fs.Get(ctx, fullPath, &fs.GetArgs{})
 	if err == nil {

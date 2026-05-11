@@ -9,7 +9,9 @@ import (
 	//"strconv"
 	"strings"
 	"time"
+	"os"
 	"path"
+	"path/filepath"
 
 	_115 "github.com/OpenListTeam/OpenList/v4/drivers/115"
 	"github.com/OpenListTeam/OpenList/v4/drivers/aliyundrive_share2open"
@@ -120,6 +122,48 @@ func (d *AliyunTo115) doSync() {
 	if configRootID == "" {
 		configRootID = "0"
 	}
+
+	// ========== strm.txt 模式检测 ==========
+	cwd, _ := os.Getwd()
+	strmFile := filepath.Join(cwd, "strm.txt")
+	if _, err := os.Stat(strmFile); err == nil {
+		// strm.txt 存在，切换为文件同步模式
+		strmData, err := os.ReadFile(strmFile)
+		if err != nil {
+			fmt.Printf("[aliyun_to_115] 读取 strm.txt 失败: %v\n", err)
+		} else {
+			lines := strings.Split(strings.TrimSpace(string(strmData)), "\n")
+			for _, line := range lines {
+				line = strings.TrimSpace(line)
+				if line == "" || strings.HasPrefix(line, "#") {
+					continue
+				}
+				parts := strings.SplitN(line, "#", 2)
+				if len(parts) != 2 {
+					continue
+				}
+				dstRaw := strings.TrimSpace(parts[0])
+				srcRaw := strings.TrimSpace(parts[1])
+
+				// 从 src 提取扩展名，替换到 dst
+				srcExt := filepath.Ext(srcRaw)
+				dstPath := dstRaw
+				if srcExt != "" {
+					ext := filepath.Ext(dstRaw)
+					if ext != "" {
+						dstPath = strings.TrimSuffix(dstRaw, ext) + srcExt
+					}
+				}
+
+				fmt.Printf("[aliyun_to_115] strm: src=%s -> dst=%s\n", srcRaw, dstPath)
+				d.processSingleFile(ctx, srcRaw, dstPath, stats)
+			}
+		}
+		fmt.Printf("[aliyun_to_115] ===== strm模式同步完成: 发现%v / 跳过%v / 秒传%v / 正常%v / 失败%v =====\n",
+			stats.total, stats.skipped, stats.rapid, stats.normal, stats.failed)
+		return
+	}
+	// ========== 原生遍历驱动模式 ==========
 
 	for _, aliyun := range aliyunStorages {
 		storage := aliyun.GetStorage()

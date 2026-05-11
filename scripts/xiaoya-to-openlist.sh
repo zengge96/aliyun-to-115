@@ -316,7 +316,7 @@ echo ">>> 插入 AliyunTo115 驱动..."
 cat <<EOF >> "$TMP_SQL"
 INSERT INTO x_storages VALUES (
     NULL, '/115sync', 0, 'AliyunTo115', 1, '', 'work',
-    json('{"open115_cookie":"$ESC_115_COOKIE","sync_interval":20,"root_folder_id":"$ESC_SYNC_ROOT_ID","qrcode_token":"","qrcode_source":"","page_size":0,"limit_rate":0,"delete_after_sync":false}'),
+    json('{"open115_cookie":"$ESC_115_COOKIE","sync_interval":20,"root_folder_id":"$ESC_SYNC_ROOT_ID","qrcode_token":"","qrcode_source":"","page_size":0,"limit_rate":2,"delete_after_sync":false}'),
     '', datetime('now', 'localtime'), 0,
     0, 0, '', '', '', 0, '302_redirect', 0, '', 0
 );

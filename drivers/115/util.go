@@ -363,6 +363,10 @@ func (c *Pan115) UploadByOSS(ctx context.Context, params *driver115.UploadOSSPar
 func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.UploadOSSParams, fileSize int64, s model.FileStreamer,
 	dirID string, up driver.UpdateProgress, opts ...driver115.UploadMultipartOption,
 ) (*UploadResult, error) {
+	// 创建派生 context，确保由于错误退出函数时，所有后台 goroutine 都能收到关闭信号，防止泄漏
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	var (
 		chunks    []oss.FileChunk
 		parts     []oss.UploadPart
@@ -388,8 +392,16 @@ func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.Upload
 			f(options)
 		}
 	}
-	// oss 启用Sequential必须按顺序上传
-	options.ThreadsNum = 1
+
+	// ==================== 自定义读写分离参数 ====================
+	// 读线程数：负责从本地或缓存将数据读进内存队列
+	readThreadsNum := 2
+	// 写线程数：如果 OSS 强制要求 Sequential() 按顺序上传，请务必保持 writeThreadsNum 为 1。
+	// 若 OSS 实际上允许无序并行分片，可将其改大以提升上传速度。
+	writeThreadsNum := 1
+	// 队列最大长度：控制内存占用。如每个分片10MB，队列10则最多占用 100MB 内存缓冲
+	queueMaxLen := 10
+	// ============================================================
 
 	if ossToken, err = d.client.GetOSSToken(); err != nil {
 		return nil, err
@@ -413,6 +425,7 @@ func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.Upload
 	defer ticker.Stop()
 	// 设置超时
 	timeout := time.NewTimer(options.Timeout)
+	defer timeout.Stop()
 
 	if chunks, err = SplitFile(fileSize); err != nil {
 		return nil, err
@@ -436,78 +449,135 @@ func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.Upload
 	UploadedPartsCh := make(chan oss.UploadPart)
 	quit := make(chan struct{})
 
-	// producer
+	// 定义带数据的结构体，用于在读写线程间传递
+	type ChunkData struct {
+		Chunk oss.FileChunk
+		Data  []byte
+	}
+	// 读写分离的有界队列
+	dataQueue := make(chan ChunkData, queueMaxLen)
+
+	// chunk 生产者 (生成分片元数据)
 	go chunksProducer(chunksCh, chunks)
+	
+	// 监听所有分片处理完成
 	go func() {
 		wg.Wait()
 		quit <- struct{}{}
 	}()
 
+	// ==================== 1. 读线程池 ====================
+	var readWg sync.WaitGroup
+	for i := 0; i < readThreadsNum; i++ {
+		readWg.Add(1)
+		go func() {
+			defer readWg.Done()
+			for chunk := range chunksCh {
+				buf := make([]byte, chunk.Size)
+				if _, err := tmpF.ReadAt(buf, chunk.Offset); err != nil && !errors.Is(err, io.EOF) {
+					errCh <- errors.Wrap(err, fmt.Sprintf("读取 %s 的第%d个分片失败", s.GetName(), chunk.Number))
+					return // 读取发生致命错误，退出当前读线程
+				}
+
+				// 将读取的数据放入队列，若队列满则阻塞，若 ctx canceled 则退出
+				select {
+				case <-ctx.Done():
+					return
+				case dataQueue <- ChunkData{Chunk: chunk, Data: buf}:
+				}
+			}
+		}()
+	}
+
+	// 监控所有的读线程，全部结束后关闭数据队列
+	go func() {
+		readWg.Wait()
+		close(dataQueue)
+	}()
+
+	// ==================== 2. 写（上传）线程池 ====================
 	completedNum := atomic.Int32{}
-	// consumers
-	for i := 0; i < options.ThreadsNum; i++ {
-		go func(threadId int) {
+	var tokenMutex sync.RWMutex // 保护 ossToken 并发读写的锁
+
+	for i := 0; i < writeThreadsNum; i++ {
+		go func() {
 			defer func() {
 				if r := recover(); r != nil {
 					errCh <- fmt.Errorf("recovered in %v", r)
 				}
 			}()
-			for chunk := range chunksCh {
-				var part oss.UploadPart // 出现错误就继续尝试，共尝试3次
+
+			// 不断从队列获取带有数据的 chunk
+			for cd := range dataQueue {
+				chunk := cd.Chunk
+				buf := cd.Data
+				var part oss.UploadPart
+				var uploadErr error
+
+				// 出现错误就继续尝试，共尝试3次
 				for retry := 0; retry < 3; retry++ {
 					select {
 					case <-ctx.Done():
-						break
-					case <-ticker.C:
-						if ossToken, err = d.client.GetOSSToken(); err != nil { // 到时重新获取ossToken
-							errCh <- errors.Wrap(err, "刷新token时出现错误")
-						}
+						return // 退出写线程
 					default:
 					}
-					buf := make([]byte, chunk.Size)
-					if _, err = tmpF.ReadAt(buf, chunk.Offset); err != nil && !errors.Is(err, io.EOF) {
-						//fmt.Printf("[DEBUG Multi] chunk[%d] ReadAt FAIL offset=%d size=%d err=%v\n", chunk.Number, chunk.Offset, chunk.Size, err)
-						continue
-					}
-					//bufSHA1 := sha1.Sum(buf[:chunk.Size])
-					//fmt.Printf("[DEBUG Multi] chunk[%d] ReadAt OK offset=%d size=%d bufSHA1=%X\n", chunk.Number, chunk.Offset, chunk.Size, bufSHA1)
-					if part, err = bucket.UploadPart(imur, driver.NewLimitedUploadStream(ctx, bytes.NewReader(buf)),
-						chunk.Size, chunk.Number, driver115.OssOption(params, ossToken)...); err == nil {
-						//fmt.Printf("[DEBUG Multi] chunk[%d] UploadPart OK etag=%s\n", chunk.Number, part.ETag)
-						break
-					} else {
-						//fmt.Printf("[DEBUG Multi] chunk[%d] UploadPart FAIL err=%v\n", chunk.Number, err)
+
+					// 安全地读取当前 Token
+					tokenMutex.RLock()
+					currentToken := ossToken
+					tokenMutex.RUnlock()
+
+					// 执行上传网络请求
+					part, uploadErr = bucket.UploadPart(imur, driver.NewLimitedUploadStream(ctx, bytes.NewReader(buf)),
+						chunk.Size, chunk.Number, driver115.OssOption(params, currentToken)...)
+					if uploadErr == nil {
+						break // 上传成功，跳出重试循环
 					}
 				}
-				if err != nil {
-					errCh <- errors.Wrap(err, fmt.Sprintf("上传 %s 的第%d个分片时出现错误：%v", s.GetName(), chunk.Number, err))
-				} else {
-					num := completedNum.Add(1)
-					up(float64(num) * 100.0 / float64(len(chunks)))
+
+				if uploadErr != nil {
+					errCh <- errors.Wrap(uploadErr, fmt.Sprintf("上传 %s 的第%d个分片时出现错误：%v", s.GetName(), chunk.Number, uploadErr))
+					return // 退出当前写线程
 				}
-				UploadedPartsCh <- part
+
+				// 上传成功，更新进度条
+				num := completedNum.Add(1)
+				up(float64(num) * 100.0 / float64(len(chunks)))
+				
+				// 将成功的分片信息塞给收集器
+				select {
+				case <-ctx.Done():
+					return
+				case UploadedPartsCh <- part:
+				}
 			}
-		}(i)
+		}()
 	}
 
+	// ==================== 3. 结果收集与主循环 ====================
 	go func() {
 		for part := range UploadedPartsCh {
 			parts = append(parts, part)
 			wg.Done()
 		}
 	}()
+
 LOOP:
 	for {
 		select {
 		case <-ticker.C:
-			// 到时重新获取ossToken
-			if ossToken, err = d.client.GetOSSToken(); err != nil {
-				return nil, err
+			// 到时重新获取 ossToken，加写锁以防止写线程在此期间读取
+			newToken, tErr := d.client.GetOSSToken()
+			if tErr != nil {
+				return nil, errors.Wrap(tErr, "定时刷新token时出现错误")
 			}
+			tokenMutex.Lock()
+			ossToken = newToken
+			tokenMutex.Unlock()
 		case <-quit:
 			break LOOP
-		case <-errCh:
-			return nil, err
+		case e := <-errCh:  // 修正：捕获具体的 errCh 发送的 error
+			return nil, e
 		case <-timeout.C:
 			return nil, fmt.Errorf("time out")
 		}
@@ -517,8 +587,9 @@ LOOP:
 	// params.Callback.Callback = strings.ReplaceAll(params.Callback.Callback, "${sha1}", params.SHA1)
 	//fmt.Printf("[DEBUG Multi] CompleteMultipartUpload partsCount=%d\n", len(parts))
 	//for i, p := range parts {
-		//fmt.Printf("[DEBUG Multi]   part[%d] ETag=%s PartNumber=%d\n", i, p.ETag, p.PartNumber)
+	//fmt.Printf("[DEBUG Multi]   part[%d] ETag=%s PartNumber=%d\n", i, p.ETag, p.PartNumber)
 	//}
+	
 	if _, err := bucket.CompleteMultipartUpload(imur, parts, append(
 		driver115.OssOption(params, ossToken),
 		oss.CallbackResult(&bodyBytes),

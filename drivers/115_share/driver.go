@@ -120,7 +120,7 @@ func (d *Pan115Share) Link(ctx context.Context, file model.Obj, args model.LinkA
 	file_name := file.GetName()
     existed_download_url, ok := d.DownloadUrl_dict[file_id]
     if ok {
-        fmt.Println(time.Now().Format("01-02-2006 15:04:05"),"115下载链接已存在: ",file_name)
+        //fmt.Println(time.Now().Format("01-02-2006 15:04:05"),"115下载链接已存在: ",file_name)
 		return &model.Link{URL: existed_download_url}, nil
     }
 
@@ -178,7 +178,7 @@ func (d *Pan115Share) Link(ctx context.Context, file model.Obj, args model.LinkA
     }
 */
 	d.DownloadUrl_dict[file_id] = downloadInfo.URL.URL	
-	fmt.Println(time.Now().Format("01-02-2006 15:04:05"),file_name,"获取115分享直链: ",downloadInfo.URL.URL)
+	//fmt.Println(time.Now().Format("01-02-2006 15:04:05"),file_name,"获取115分享直链: ",downloadInfo.URL.URL)
 	return &model.Link{URL: downloadInfo.URL.URL}, nil
 }
 

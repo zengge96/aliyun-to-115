@@ -233,6 +233,11 @@ func (d *AliyunTo115) getOrCreateDirID(ctx context.Context, fullPath string) (st
 		return "", fmt.Errorf("创建目录失败 [%s]: 错误: %w", fullPath, err)
 	}
 
+	fs.List(ctx, parentPath, &fs.ListArgs{
+			NoLog:              true,
+			Refresh:            args.Refresh,
+		})
+
 	dirObj, err = fs.Get(ctx, fullPath, &fs.GetArgs{})
 	if err != nil {
 		return "", fmt.Errorf("获取新建目录 ID 失败 [%s]: %w", fullPath, err)

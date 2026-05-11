@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	//"strconv"
 	"strings"
 	"time"
@@ -145,18 +146,32 @@ func (d *AliyunTo115) doSync() {
 				dstRaw := strings.TrimSpace(parts[0])
 				srcRaw := strings.TrimSpace(parts[1])
 
-				// 从 src 提取扩展名，替换到 dst
-				srcExt := filepath.Ext(srcRaw)
-				dstPath := dstRaw
-				if srcExt != "" {
-					ext := filepath.Ext(dstRaw)
-					if ext != "" {
-						dstPath = strings.TrimSuffix(dstRaw, ext) + srcExt
+				// 解析出真实 srcPath：如果是 HTTP URL 则提取路径部分并做 URL decode
+				srcPath := srcRaw
+				if strings.HasPrefix(srcRaw, "http://") || strings.HasPrefix(srcRaw, "https://") {
+					if u, err := url.Parse(srcRaw); err == nil {
+						srcPath, _ = url.QueryUnescape(u.Path)
 					}
 				}
 
-				fmt.Printf("[aliyun_to_115] strm: src=%s -> dst=%s\n", srcRaw, dstPath)
-				d.processSingleFile(ctx, srcRaw, dstPath, stats)
+				// dstPath：如果 src 是 HTTP，则直接用 srcPath；否则从 src 提取扩展名替换到 dst
+				dstPath := dstRaw
+				if strings.HasPrefix(srcRaw, "http://") || strings.HasPrefix(srcRaw, "https://") {
+					// HTTP 源：dst 直接用解析后的 srcPath
+					dstPath = srcPath
+				} else {
+					// 本地路径：扩展名替换
+					srcExt := filepath.Ext(srcPath)
+					if srcExt != "" {
+						ext := filepath.Ext(dstRaw)
+						if ext != "" {
+							dstPath = strings.TrimSuffix(dstRaw, ext) + srcExt
+						}
+					}
+				}
+
+				fmt.Printf("[aliyun_to_115] strm: src=%s -> dst=%s\n", srcPath, dstPath)
+				d.processSingleFile(ctx, srcPath, dstPath, stats)
 			}
 		}
 		fmt.Printf("[aliyun_to_115] ===== strm模式同步完成: 发现%v / 跳过%v / 秒传%v / 正常%v / 失败%v =====\n",

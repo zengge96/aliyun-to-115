@@ -298,7 +298,7 @@ WHERE c3 = '115 Share' AND json_valid(c6) = 1;
 
 -- 转换 Alias
 UPDATE temp_storages 
-SET c6 = json_set(c6, '$.paths', replace(json_extract(c6, '$.paths'), '本地:', ''))
+SET c6 = json_set(c6, '$.paths', json_extract(c6, '$.paths'))
 WHERE c3 = 'Alias' AND json_valid(c6) = 1 AND json_extract(c6, '$.paths') IS NOT NULL;
 
 -- 映射并插入 OpenList 所需的最终 21 列表结构 (跳过原数组的第7位和多余位，精准对应 Python)

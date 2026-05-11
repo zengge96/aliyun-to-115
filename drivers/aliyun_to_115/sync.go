@@ -302,7 +302,7 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 		return
 	}
 
-	stream := newUrlFileStreamer(f.GetName(), f.GetSize(), sha1Str, link.URL)
+	stream := newUrlFileStreamer(path.Base(dstPath), f.GetSize(), sha1Str, link.URL)
 	start := time.Now()
 	
 	// 使用动态获取到的 p115DirID 上传

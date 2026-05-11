@@ -3,6 +3,7 @@ package aliyundrive_share2open
 import (
 	"context"
 	"net/http"
+	"sync"
 	"time"
 	"fmt"
 	"encoding/json"
@@ -35,6 +36,8 @@ type AliyundriveShare2Open struct {
 	DownloadUrl_dict map[string]string
 	Hash_dict map[string]string
 	FileID_Link		 map[string]string
+	initOnce        sync.Once
+	initErr         error
 }
 
 func (d *AliyundriveShare2Open) Config() driver.Config {
@@ -46,42 +49,6 @@ func (d *AliyundriveShare2Open) GetAddition() driver.Additional {
 }
 
 func (d *AliyundriveShare2Open) Init(ctx context.Context) error {
-	err := d.refreshToken()
-	if err != nil {
-		return err
-	}
-	err2 := d.getShareToken()
-	if err2 != nil {
-		return err2
-	}
-	err = d.refreshTokenOpen(ctx)
-	if err != nil {
-		return err
-	}
-	var siteMap map[string]string
-    var downloadurlmap map[string]string
-	var fileid_link map[string]string
-    downloadurlmap = make(map[string]string)
-	fileid_link = make(map[string]string)
-	siteMap = make(map[string]string)
-	d.CopyFiles = siteMap
-	d.DownloadUrl_dict = downloadurlmap
-	d.Hash_dict = make(map[string]string)
-	d.FileID_Link = fileid_link
-
-	//res, err := d.request("https://api.aliyundrive.com/v2/user/get", http.MethodPost, nil)
-	res, err := d.requestOpen(ctx, "/adrive/v1.0/user/getDriveInfo", http.MethodPost, func(req *resty.Request){})
-	if err != nil {
-		return err
-	}
-	d.MyAliDriveId = utils.Json.Get(res, "default_drive_id").ToString()
-	d.backup_drive_id = utils.Json.Get(res, "backup_drive_id").ToString()
-	d.resource_drive_id = utils.Json.Get(res, "resource_drive_id").ToString()
-	if d.resource_drive_id != "" {
-		d.MyAliDriveId = d.resource_drive_id 
-		//fmt.Println("资源库ID:", d.resource_drive_id)
-	}
-
 	d.cron = cron.NewCron(time.Hour * 2)
 	d.cron.Do(func() {
 		err := d.refreshToken()
@@ -99,17 +66,61 @@ func (d *AliyundriveShare2Open) Init(ctx context.Context) error {
 		}
 	})
 
-    d.cron2 = cron.NewCron(time.Minute * 13)
-    d.cron2.Do(func() {
-	if len(d.FileID_Link) > 0 {
-		fmt.Println(time.Now().Format("01-02-2006 15:04:05")," 清空缓存下载链接: ", d.MountPath) //d.ShareId) //d.MyAliDriveId)
-		d.DownloadUrl_dict = make(map[string]string)
-		d.Hash_dict = make(map[string]string)
-		d.FileID_Link = make(map[string]string)
-		d.CopyFiles = make(map[string]string)
-	}
-    })
+	d.cron2 = cron.NewCron(time.Minute * 13)
+	d.cron2.Do(func() {
+		if len(d.FileID_Link) > 0 {
+			fmt.Println(time.Now().Format("01-02-2006 15:04:05"), " 清空缓存下载链接: ", d.MountPath)
+			d.DownloadUrl_dict = make(map[string]string)
+			d.Hash_dict = make(map[string]string)
+			d.FileID_Link = make(map[string]string)
+			d.CopyFiles = make(map[string]string)
+		}
+	})
 	return nil
+}
+
+func (d *AliyundriveShare2Open) ensureInit(ctx context.Context) error {
+	d.initOnce.Do(func() {
+		err := d.refreshToken()
+		if err != nil {
+			d.initErr = err
+			return
+		}
+		err = d.getShareToken()
+		if err != nil {
+			d.initErr = err
+			return
+		}
+		err = d.refreshTokenOpen(ctx)
+		if err != nil {
+			d.initErr = err
+			return
+		}
+
+		var siteMap map[string]string
+		var downloadurlmap map[string]string
+		var fileid_link map[string]string
+		downloadurlmap = make(map[string]string)
+		fileid_link = make(map[string]string)
+		siteMap = make(map[string]string)
+		d.CopyFiles = siteMap
+		d.DownloadUrl_dict = downloadurlmap
+		d.Hash_dict = make(map[string]string)
+		d.FileID_Link = fileid_link
+
+		res, err := d.requestOpen(ctx, "/adrive/v1.0/user/getDriveInfo", http.MethodPost, func(req *resty.Request){})
+		if err != nil {
+			d.initErr = err
+			return
+		}
+		d.MyAliDriveId = utils.Json.Get(res, "default_drive_id").ToString()
+		d.backup_drive_id = utils.Json.Get(res, "backup_drive_id").ToString()
+		d.resource_drive_id = utils.Json.Get(res, "resource_drive_id").ToString()
+		if d.resource_drive_id != "" {
+			d.MyAliDriveId = d.resource_drive_id
+		}
+	})
+	return d.initErr
 }
 
 func (d *AliyundriveShare2Open) Drop(ctx context.Context) error {
@@ -121,6 +132,9 @@ func (d *AliyundriveShare2Open) Drop(ctx context.Context) error {
 }
 
 func (d *AliyundriveShare2Open) List(ctx context.Context, dir model.Obj, args model.ListArgs) ([]model.Obj, error) {
+	if err := d.ensureInit(ctx); err != nil {
+		return nil, err
+	}
     count := 0
 	for {
 		files, err := d.getFiles(dir.GetID())

@@ -200,14 +200,14 @@ func (d *AliyunTo115) getOrCreateDirID(ctx context.Context, fullPath string) (st
 	fullPath = path.Clean(fullPath)
 	
 	if fullPath == "/" || fullPath == "." || fullPath == "" {
-		dirObj, err := fs.Get(ctx, "/", &fs.GetArgs{})
+		dirObj, err := fs.Get(ctx, "/", &fs.GetArgs{NoLog: true})
 		if err != nil {
 			return "", fmt.Errorf("获取根目录信息失败: %w", err)
 		}
 		return dirObj.GetID(), nil
 	}
 
-	dirObj, err := fs.Get(ctx, fullPath, &fs.GetArgs{})
+	dirObj, err := fs.Get(ctx, fullPath, &fs.GetArgs{NoLog: true})
 	if err == nil {
 		if dirObj.IsDir() {
 			return dirObj.GetID(), nil
@@ -234,11 +234,11 @@ func (d *AliyunTo115) getOrCreateDirID(ctx context.Context, fullPath string) (st
 	}
 
 	fs.List(ctx, parentPath, &fs.ListArgs{
-			NoLog:              true,
-			Refresh:            args.Refresh,
+			NoLog: true,
+			Refresh: true,
 		})
 
-	dirObj, err = fs.Get(ctx, fullPath, &fs.GetArgs{})
+	dirObj, err = fs.Get(ctx, fullPath, &fs.GetArgs{NoLog: true})
 	if err != nil {
 		return "", fmt.Errorf("获取新建目录 ID 失败 [%s]: %w", fullPath, err)
 	}

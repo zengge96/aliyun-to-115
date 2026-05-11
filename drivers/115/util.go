@@ -378,10 +378,7 @@ func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.Upload
 		err       error
 	)
 
-	//fmt.Printf("[DEBUG Multi] START fileName=%s fileSize=%d dirID=%s\n", s.GetName(), fileSize, dirID)
-
 	tmpF, err := s.CacheFullAndWriter(&up, nil)
-	//fmt.Printf("[DEBUG Multi] CacheFullAndWriter tmpF=%T err=%v\n", tmpF, err)
 	if err != nil {
 		return nil, err
 	}
@@ -396,21 +393,15 @@ func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.Upload
 	// ==================== 自定义读写分离参数 ====================
 	// 读线程数：负责从本地或缓存将数据读进内存队列
 	readThreadsNum := 2
-	// 写线程数：如果 OSS 强制要求 Sequential() 按顺序上传，请务必保持 writeThreadsNum 为 1。
-	// 若 OSS 实际上允许无序并行分片，可将其改大以提升上传速度。
+	// 写线程数：因为 OSS 强制要求 Sequential() 按顺序上传，请务必保持 writeThreadsNum 为 1。
 	writeThreadsNum := 1
-	// 队列最大长度：控制内存占用。如每个分片10MB，队列10则最多占用 100MB 内存缓冲
+	// 队列最大长度：控制内存占用。采用保序滑动窗口后，内存占用被严格限制在 queueMaxLen * chunkSize 以内
 	queueMaxLen := 10
 	// ============================================================
 
 	if ossToken, err = d.client.GetOSSToken(); err != nil {
 		return nil, err
 	}
-	ak := ossToken.AccessKeyID
-	if len(ak) > 8 {
-		ak = ak[:8] + "..."
-	}
-	//fmt.Printf("[DEBUG Multi] GetOSSToken ok AccessKeyID=%s SecurityToken_len=%d\n", ak, len(ossToken.SecurityToken))
 
 	if ossClient, err = netutil.NewOSSClient(driver115.OSSEndpoint, ossToken.AccessKeyID, ossToken.AccessKeySecret, oss.EnableMD5(true), oss.EnableCRC(true)); err != nil {
 		return nil, err
@@ -420,17 +411,14 @@ func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.Upload
 		return nil, err
 	}
 
-	// ossToken一小时后就会失效，所以每50分钟重新获取一次
 	ticker := time.NewTicker(options.TokenRefreshTime)
 	defer ticker.Stop()
-	// 设置超时
 	timeout := time.NewTimer(options.Timeout)
 	defer timeout.Stop()
 
 	if chunks, err = SplitFile(fileSize); err != nil {
 		return nil, err
 	}
-	//fmt.Printf("[DEBUG Multi] SplitFile done chunks=%d totalSize=%d\n", len(chunks), fileSize)
 
 	if imur, err = bucket.InitiateMultipartUpload(params.Object,
 		oss.SetHeader(driver115.OssSecurityTokenHeaderName, ossToken.SecurityToken),
@@ -439,31 +427,59 @@ func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.Upload
 	); err != nil {
 		return nil, err
 	}
-	//fmt.Printf("[DEBUG Multi] InitiateMultipartUpload ok uploadID=%s object=%s\n", imur.UploadID, params.Object)
 
 	wg := sync.WaitGroup{}
 	wg.Add(len(chunks))
 
-	chunksCh := make(chan oss.FileChunk)
-	errCh := make(chan error)
+	// 给 error 增加缓冲，避免多协程同时报错时产生阻塞泄漏
+	errCh := make(chan error, readThreadsNum+writeThreadsNum+2)
 	UploadedPartsCh := make(chan oss.UploadPart)
 	quit := make(chan struct{})
 
-	// 定义带数据的结构体，用于在读写线程间传递
-	type ChunkData struct {
-		Chunk oss.FileChunk
-		Data  []byte
-	}
-	// 读写分离的有界队列
-	dataQueue := make(chan ChunkData, queueMaxLen)
-
-	// chunk 生产者 (生成分片元数据)
-	go chunksProducer(chunksCh, chunks)
-	
 	// 监听所有分片处理完成
 	go func() {
 		wg.Wait()
 		quit <- struct{}{}
+	}()
+
+	// ==================== 新增：保序结构与通道 ====================
+	type Job struct {
+		Index int
+		Chunk oss.FileChunk
+	}
+	type ChunkData struct {
+		Chunk oss.FileChunk
+		Data  []byte
+	}
+
+	jobsCh := make(chan Job) // 派发读任务
+	// 每个分片一个专属的等待通道，防止乱序
+	chunkWaiters := make([]chan ChunkData, len(chunks))
+	for i := range chunkWaiters {
+		chunkWaiters[i] = make(chan ChunkData, 1)
+	}
+	// 重新排好序后，塞给写线程的单行道
+	orderedDataQueue := make(chan ChunkData)
+	// 内存控制令牌桶：最大允许在内存中同时处理（或排队）的分片数
+	activeChunksLimit := make(chan struct{}, queueMaxLen)
+
+	// ==================== 0. 任务分配与滑动内存控制 ====================
+	go func() {
+		defer close(jobsCh)
+		for i, chunk := range chunks {
+			// 先获取内存令牌（若积压达到 queueMaxLen 则会阻塞，直至写线程成功上传释放令牌）
+			select {
+			case <-ctx.Done():
+				return
+			case activeChunksLimit <- struct{}{}:
+			}
+
+			select {
+			case <-ctx.Done():
+				return
+			case jobsCh <- Job{Index: i, Chunk: chunk}:
+			}
+		}
 	}()
 
 	// ==================== 1. 读线程池 ====================
@@ -472,32 +488,67 @@ func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.Upload
 		readWg.Add(1)
 		go func() {
 			defer readWg.Done()
-			for chunk := range chunksCh {
+			for job := range jobsCh {
+				chunk := job.Chunk
 				buf := make([]byte, chunk.Size)
-				if _, err := tmpF.ReadAt(buf, chunk.Offset); err != nil && !errors.Is(err, io.EOF) {
-					errCh <- errors.Wrap(err, fmt.Sprintf("读取 %s 的第%d个分片失败", s.GetName(), chunk.Number))
-					return // 读取发生致命错误，退出当前读线程
+				var readErr error
+				maxReadRetries := 3
+
+				// 读取重试机制
+				for retry := 0; retry < maxReadRetries; retry++ {
+					select {
+					case <-ctx.Done():
+						return
+					default:
+					}
+
+					_, readErr = tmpF.ReadAt(buf, chunk.Offset)
+					if readErr == nil || errors.Is(readErr, io.EOF) {
+						readErr = nil
+						break
+					}
+
+					if retry < maxReadRetries-1 {
+						select {
+						case <-ctx.Done():
+							return
+						case <-time.After(100 * time.Millisecond):
+						}
+					}
 				}
 
-				// 将读取的数据放入队列，若队列满则阻塞，若 ctx canceled 则退出
-				select {
-				case <-ctx.Done():
+				if readErr != nil {
+					errCh <- errors.Wrap(readErr, fmt.Sprintf("读取 %s 的第%d个分片失败(已重试%d次)", s.GetName(), chunk.Number, maxReadRetries))
 					return
-				case dataQueue <- ChunkData{Chunk: chunk, Data: buf}:
 				}
+
+				// 将读取完毕的数据放入它专属序号的等待通道
+				chunkWaiters[job.Index] <- ChunkData{Chunk: chunk, Data: buf}
 			}
 		}()
 	}
 
-	// 监控所有的读线程，全部结束后关闭数据队列
+	// ==================== 1.5 严格保序调度器 ====================
+	// 它按 0, 1, 2, 3... 的死顺序收集，发现缺失就坚决等待，保证送给写线程的永远是顺序结构
 	go func() {
-		readWg.Wait()
-		close(dataQueue)
+		defer close(orderedDataQueue)
+		for i := 0; i < len(chunks); i++ {
+			select {
+			case <-ctx.Done():
+				return
+			case cd := <-chunkWaiters[i]: // 阻塞等待当前顺位编号的 chunk 完成
+				select {
+				case <-ctx.Done():
+					return
+				case orderedDataQueue <- cd:
+				}
+			}
+		}
 	}()
 
 	// ==================== 2. 写（上传）线程池 ====================
 	completedNum := atomic.Int32{}
-	var tokenMutex sync.RWMutex // 保护 ossToken 并发读写的锁
+	var tokenMutex sync.RWMutex
 
 	for i := 0; i < writeThreadsNum; i++ {
 		go func() {
@@ -507,49 +558,48 @@ func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.Upload
 				}
 			}()
 
-			// 不断从队列获取带有数据的 chunk
-			for cd := range dataQueue {
+			// 拿到的必然是严格按序到达的数据
+			for cd := range orderedDataQueue {
 				chunk := cd.Chunk
 				buf := cd.Data
 				var part oss.UploadPart
 				var uploadErr error
 
-				// 出现错误就继续尝试，共尝试3次
+				// 上传重试机制
 				for retry := 0; retry < 3; retry++ {
 					select {
 					case <-ctx.Done():
-						return // 退出写线程
+						return 
 					default:
 					}
 
-					// 安全地读取当前 Token
 					tokenMutex.RLock()
 					currentToken := ossToken
 					tokenMutex.RUnlock()
 
-					// 执行上传网络请求
 					part, uploadErr = bucket.UploadPart(imur, driver.NewLimitedUploadStream(ctx, bytes.NewReader(buf)),
 						chunk.Size, chunk.Number, driver115.OssOption(params, currentToken)...)
 					if uploadErr == nil {
-						break // 上传成功，跳出重试循环
+						break 
 					}
 				}
 
 				if uploadErr != nil {
 					errCh <- errors.Wrap(uploadErr, fmt.Sprintf("上传 %s 的第%d个分片时出现错误：%v", s.GetName(), chunk.Number, uploadErr))
-					return // 退出当前写线程
+					return 
 				}
 
-				// 上传成功，更新进度条
 				num := completedNum.Add(1)
 				up(float64(num) * 100.0 / float64(len(chunks)))
-				
-				// 将成功的分片信息塞给收集器
+
 				select {
 				case <-ctx.Done():
 					return
 				case UploadedPartsCh <- part:
 				}
+
+				// 【重点】上传成功并登记完毕后，释放一个内存槽位令牌！此时读派发器才能分配新一轮的任务
+				<-activeChunksLimit
 			}
 		}()
 	}
@@ -566,7 +616,6 @@ LOOP:
 	for {
 		select {
 		case <-ticker.C:
-			// 到时重新获取 ossToken，加写锁以防止写线程在此期间读取
 			newToken, tErr := d.client.GetOSSToken()
 			if tErr != nil {
 				return nil, errors.Wrap(tErr, "定时刷新token时出现错误")
@@ -576,33 +625,24 @@ LOOP:
 			tokenMutex.Unlock()
 		case <-quit:
 			break LOOP
-		case e := <-errCh:  // 修正：捕获具体的 errCh 发送的 error
+		case e := <-errCh:
 			return nil, e
 		case <-timeout.C:
 			return nil, fmt.Errorf("time out")
 		}
 	}
 
-	// 不知道啥原因，oss那边分片上传不计算sha1，导致115服务器校验错误
-	// params.Callback.Callback = strings.ReplaceAll(params.Callback.Callback, "${sha1}", params.SHA1)
-	//fmt.Printf("[DEBUG Multi] CompleteMultipartUpload partsCount=%d\n", len(parts))
-	//for i, p := range parts {
-	//fmt.Printf("[DEBUG Multi]   part[%d] ETag=%s PartNumber=%d\n", i, p.ETag, p.PartNumber)
-	//}
-	
 	if _, err := bucket.CompleteMultipartUpload(imur, parts, append(
 		driver115.OssOption(params, ossToken),
 		oss.CallbackResult(&bodyBytes),
 	)...); err != nil {
 		return nil, err
 	}
-	//fmt.Printf("[DEBUG Multi] CompleteMultipartUpload raw_response=%s\n", string(bodyBytes))
 
 	var uploadResult UploadResult
 	if err = json.Unmarshal(bodyBytes, &uploadResult); err != nil {
 		return nil, err
 	}
-	//fmt.Printf("[DEBUG Multi] uploadResult=%+v\n", uploadResult)
 	return &uploadResult, uploadResult.Err(string(bodyBytes))
 }
 

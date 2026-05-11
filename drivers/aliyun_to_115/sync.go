@@ -9,7 +9,6 @@ import (
 	//"strconv"
 	"strings"
 	"time"
-	"path"
 
 	_115 "github.com/OpenListTeam/OpenList/v4/drivers/115"
 	"github.com/OpenListTeam/OpenList/v4/drivers/aliyundrive_share2open"

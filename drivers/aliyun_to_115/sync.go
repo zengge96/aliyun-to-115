@@ -163,8 +163,8 @@ func (d *AliyunTo115) doSync() {
 			stats.total, stats.skipped, stats.rapid, stats.normal, stats.failed)
 		return
 	}
-	// ========== 原生遍历驱动模式 ==========
 
+	// ========== 原生遍历驱动模式 ==========
 	for _, aliyun := range aliyunStorages {
 		storage := aliyun.GetStorage()
 		mountPath := "/"
@@ -174,24 +174,8 @@ func (d *AliyunTo115) doSync() {
 		
 		fmt.Printf("[aliyun_to_115] 正在处理阿里存储: %s\n", mountPath)
 
-		// 1. 在 115 上根据 MountPath 创建层级
-		// 例如 /aliyun/drive 会在 115 根目录下依次创建 aliyun 和 drive 文件夹
-		segments := strings.Split(strings.Trim(mountPath, "/"), "/")
-		current115ParentID := configRootID
-		var err error
-		for _, seg := range segments {
-			if seg == "" { continue }
-			current115ParentID, err = d.p115Client.getOrCreateDir(ctx, current115ParentID, seg)
-			if err != nil {
-				fmt.Printf("[aliyun_to_115] 创建挂载路径映射失败: %v\n", err)
-				break
-			}
-		}
-		if err != nil { continue }
-
-		// 2. 开始递归遍历阿里盘并同步
 		aliRootID := aliyun.GetRootId()
-		err = d.walkAndSync(ctx, aliyun, mountPath+"/", aliRootID, current115ParentID, stats)
+		err = d.walkAndSync(ctx, aliyun, mountPath + "/", aliRootID, stats)
 		if err != nil {
 			fmt.Printf("[aliyun_to_115] walk error for %s: %v\n", mountPath, err)
 		}
@@ -201,7 +185,7 @@ func (d *AliyunTo115) doSync() {
 		stats.total, stats.skipped, stats.rapid, stats.normal, stats.failed)
 }
 
-func (d *AliyunTo115) walkAndSync(ctx context.Context, aliyun aliyunStorage, currentPath, aliParentID, p115ParentID string, stats *syncStats) error {
+func (d *AliyunTo115) walkAndSync(ctx context.Context, aliyun aliyunStorage, currentPath, aliParentID, stats *syncStats) error {
 	files, err := aliyun.List(ctx, &model.Object{ID: aliParentID}, model.ListArgs{})
 	if err != nil {
 		return err
@@ -210,13 +194,8 @@ func (d *AliyunTo115) walkAndSync(ctx context.Context, aliyun aliyunStorage, cur
 	for _, f := range files {
 		if f.IsDir() {
 			// 同步创建目录
-			subP115ID, err := d.p115Client.getOrCreateDir(ctx, p115ParentID, f.GetName())
-			if err != nil {
-				fmt.Printf("[aliyun_to_115] 无法在 115 创建目录: %s, 错误: %v\n", f.GetName(), err)
-				continue
-			}
 			subPath := currentPath + f.GetName() + "/"
-			_ = d.walkAndSync(ctx, aliyun, subPath, f.GetID(), subP115ID, stats)
+			_ = d.walkAndSync(ctx, aliyun, subPath, f.GetID(), stats)
 		} else {
 			stats.total++
 			fullPath := currentPath + f.GetName()

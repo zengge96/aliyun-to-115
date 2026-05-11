@@ -15,6 +15,7 @@ import (
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
 	"github.com/OpenListTeam/OpenList/v4/pkg/http_range"
 	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
+	"github.com/OpenListTeam/OpenList/internal/op"
 )
 
 type sync115Client struct {
@@ -173,13 +174,88 @@ func (d *AliyunTo115) walkAndSync(ctx context.Context, aliyun aliyunStorage, cur
 		} else {
 			stats.total++
 			fullPath := currentPath + f.GetName()
-			d.processSingleFile(ctx, aliyun, f, fullPath, p115ParentID, stats)
+			d.processSingleFile(ctx, f, fullPath, p115ParentID, stats)
 		}
 	}
 	return nil
 }
 
-func (d *AliyunTo115) processSingleFile(ctx context.Context, aliyun aliyunStorage, f model.Obj, fullPath string, p115DirID string, stats *syncStats) {
+func (d *AliyunTo115) processSingleFile(ctx context.Context, f model.Obj, fullPath string, p115DirID string, stats *syncStats) {
+
+	storage, relativePath, err := op.GetStorageAndRelativePath(fullPath)
+	if err != nil {
+		fmt.Printf("[aliyun_to_115] 驱动不存在\n", f.GetName())
+		return
+	}
+
+	aliyunStorage = storage.GetDriver()
+
+	mountPath := d.GetStorage().MountPath
+	cacheKey := mountPath + "/" + f.GetID()
+	hashInfo := f.GetHash()
+	sha1Str := hashInfo.GetHash(utils.SHA1)
+	if sha1Str != "" {
+		cacheKey = mountPath + "/" + sha1Str
+	}
+
+	d.syncLoopMu.Lock()
+	if d.syncedCache[cacheKey] {
+		d.syncLoopMu.Unlock()
+		stats.skipped++
+		return
+	}
+	d.syncLoopMu.Unlock()
+
+	// 115 share 风控严重，等待 1 秒
+	if _, ok := aliyun.(*aliyundrive_share2open.AliyundriveShare2Open); ok {
+		time.Sleep(1 * time.Second)
+	}
+
+	link, err := aliyun.Link(ctx, f, model.LinkArgs{})
+	if driver, ok := aliyun.(*aliyundrive_share2open.AliyundriveShare2Open); ok {
+		sha1Str = driver.GetHash(ctx, f, model.LinkArgs{})
+	}
+
+	if err != nil || link == nil || link.URL == "" {
+		stats.noLink++
+		return
+	}
+
+	stream := newUrlFileStreamer(f.GetName(), f.GetSize(), sha1Str, link.URL)
+	start := time.Now()
+	// 上传到对应的 115 目录 ID
+	result, uploadErr := d.p115Client.uploadTo115(ctx, stream, p115DirID)
+	elapsed := time.Since(start)
+
+	if uploadErr != nil || result == nil {
+		fmt.Printf("[aliyun_to_115] 上传失败: %s : %v\n", fullPath, uploadErr)
+		stats.failed++
+		return
+	}
+
+	if stream.rapidUpload {
+		fmt.Printf("[aliyun_to_115] ⚡ 秒传成功: %s -> 115目录(%s) [%v]\n", fullPath, p115DirID, elapsed)
+		stats.rapid++
+	} else {
+		fmt.Printf("[aliyun_to_115] 📤 正常上传: %s -> 115目录(%s) [%v]\n", fullPath, p115DirID, elapsed)
+		stats.normal++
+	}
+
+	// 如果你希望在 115 中物理保留文件，请注释掉下面这一行
+	if d.DeleteAfterSync {
+		_ = d.p115Client.removeFrom115(ctx, result)
+	}
+
+	d.syncLoopMu.Lock()
+	d.syncedCache[cacheKey] = true
+	d.syncLoopMu.Unlock()
+
+	d.saveSyncedCache(cacheKey)
+
+	stats.synced++
+}
+
+func (d *AliyunTo115) _processSingleFile(ctx context.Context, aliyun aliyunStorage, f model.Obj, fullPath string, p115DirID string, stats *syncStats) {
 	mountPath := d.GetStorage().MountPath
 	cacheKey := mountPath + "/" + f.GetID()
 	hashInfo := f.GetHash()

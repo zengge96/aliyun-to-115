@@ -151,6 +151,7 @@ func (d *AliyunTo115) doSync() {
 				if strings.HasPrefix(srcRaw, "http://") || strings.HasPrefix(srcRaw, "https://") {
 					if u, err := url.Parse(srcRaw); err == nil {
 						srcPath, _ = url.QueryUnescape(u.Path)
+						srcPath = strings.TrimPrefix(srcPath, "/d")
 					}
 				}
 

@@ -223,12 +223,12 @@ func (d *AliyunTo115) getOrCreateDirID(ctx context.Context, fullPath string) (st
 		}
 	}
 
-	storage, srcActualPath, err := op.GetStorageAndActualPath(getFirstDirPurePath(fullPath))
+	storage, actualPath, err := op.GetStorageAndActualPath(fullPath)
 	if err != nil {
 		return "", fmt.Errorf("解析存储路径失败: %w", err)
 	}
 
-	err = op.MakeDir(ctx, storage, srcActualPath)
+	err = op.MakeDir(ctx, storage, actualPath)
 	if err != nil {
 		return "", fmt.Errorf("创建目录失败 [%s]: 错误: %w", fullPath, err)
 	}

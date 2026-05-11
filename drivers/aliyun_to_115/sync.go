@@ -188,7 +188,7 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, fullPath string, p1
 		return
 	}
 
-	f, err := fs.Get(ctx, actualPath, &fs.GetArgs{NoLog: true})
+	f, err := fs.Get(ctx, fullPath, &fs.GetArgs{NoLog: true})
 
 	if err != nil {
 		fmt.Printf("[aliyun_to_115] 获取文件对象， fullPath=%s : %v\n", fullPath, err)

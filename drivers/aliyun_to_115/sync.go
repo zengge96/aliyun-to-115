@@ -219,7 +219,7 @@ func (d *AliyunTo115) getOrCreateDirID(ctx context.Context, fullPath string) (st
 	if parentPath != fullPath {
 		_, err = d.getOrCreateDirID(ctx, parentPath)
 		if err != nil {
-			return "", fmt.Errorf("确保父目录失败 [%s]: %w", parentPath, err)
+			return "", fmt.Errorf("创建父目录失败 [%s]: %w", parentPath, err)
 		}
 	}
 
@@ -230,14 +230,7 @@ func (d *AliyunTo115) getOrCreateDirID(ctx context.Context, fullPath string) (st
 
 	err = op.MakeDir(ctx, storage, srcActualPath)
 	if err != nil {
-		dirObj, retryErr := fs.Get(ctx, fullPath, &fs.GetArgs{})
-		if retryErr == nil {
-			if dirObj.IsDir() {
-				return dirObj.GetID(), nil
-			}
-			return "", fmt.Errorf("创建后冲突：路径是文件: %s", fullPath)
-		}
-		return "", fmt.Errorf("创建目录失败 [%s]: %v (原始错误: %w)", fullPath, retryErr, err)
+		return "", fmt.Errorf("创建目录失败 [%s]: 错误: %w", fullPath, err)
 	}
 
 	dirObj, err = fs.Get(ctx, fullPath, &fs.GetArgs{})
@@ -264,9 +257,10 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, fullPath string, st
 		return
 	}
 
-	p115DirID, err := d.getOrCreateDirID(ctx, d.GetStorage().MountPath + path.Dir(fullPath))
+	p115DirStr := d.GetStorage().MountPath + path.Dir(fullPath)
+	p115DirID, err := d.getOrCreateDirID(ctx, p115DirStr)
 	if err != nil {
-		fmt.Printf("[aliyun_to_115] 准备115目录失败 [%s]: %v\n", fullPath, err)
+		fmt.Printf("[aliyun_to_115] 准备115目录失败 [%s]: %v\n", p115DirStr, err)
 		return
 	}
 

@@ -237,7 +237,7 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, fullPath string, st
 		return
 	}
 
-	p115DirID, err := d.getOrCreate115DirID(ctx, fullPath)
+	p115DirID, err := d.getOrCreate115DirID(ctx, path.Dir(fullPath))
 	if err != nil {
 		fmt.Printf("[aliyun_to_115] 准备115目录失败 [%s]: %v\n", fullPath, err)
 		return

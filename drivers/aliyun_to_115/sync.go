@@ -189,7 +189,7 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, f model.Obj, fullPa
 		return
 	}
 
-	aliyunStorage = storage.GetDriver()
+	aliyunStorage: = storage.GetDriver()
 
 	mountPath := d.GetStorage().MountPath
 	cacheKey := mountPath + "/" + f.GetID()

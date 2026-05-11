@@ -191,11 +191,7 @@ func (d *AliyunTo115) getOrCreate115DirID(ctx context.Context, fullPath string) 
 		return "", fmt.Errorf("路径存在但不是文件夹: %s", fullPath)
 	}
 
-	storage, actualPath, err := op.GetStorageAndActualPath(fullPath)
-	if err != nil {
-		return errors.WithMessage(err, "failed get storage")
-	}
-	err = op.MakeDir(ctx, storage, actualPath)
+	err = op.MakeDir(ctx, d.GetStorage(), fullPath)
 	if err != nil {
 		return "", fmt.Errorf("创建目录失败: %s, err: %v", fullPath, err)
 	}
@@ -223,19 +219,17 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, fullPath string, st
 		return
 	}
 
-	aliyunMountPath := aliyun.GetStorage().MountPath
-	pan115FullDirPath := path.Join(d.GetStorage().MountPath, aliyunMountPath)
-	
-	p115DirID, err := d.getOrCreate115DirID(ctx, pan115FullDirPath)
+	p115DirID, err := d.getOrCreate115DirID(ctx, fullPath)
 	if err != nil {
-		fmt.Printf("[aliyun_to_115] 准备115目录失败 [%s]: %v\n", pan115FullDirPath, err)
+		fmt.Printf("[aliyun_to_115] 准备115目录失败 [%s]: %v\n", fullPath, err)
 		return
 	}
 	// ----------------------------------------------
 
-	fmt.Printf("pan115FullDirPath=%s, p115DirID=%s\n", pan115FullDirPath, p115DirID)
+	fmt.Printf("pan115FullDirPath=%s, p115DirID=%s\n", fullPath, p115DirID)
 
 	// 缓存逻辑
+	aliyunMountPath := aliyun.GetStorage().MountPath
 	cacheKey := aliyunMountPath + "/" + f.GetID()
 	hashInfo := f.GetHash()
 	sha1Str := hashInfo.GetHash(utils.SHA1)

@@ -164,6 +164,7 @@ func (d *AliyunTo115) doSync() {
 					continue
 				}
 				dstRaw := strings.TrimSpace(parts[0])
+				dstRaw = "/" + strings.TrimPrefix(dstRaw, "/")
 				srcRaw := strings.TrimSpace(parts[1])
 
 				// 解析出真实 srcPath：如果是 HTTP URL 则提取路径部分并做 URL decode
@@ -174,7 +175,6 @@ func (d *AliyunTo115) doSync() {
 						srcPath = strings.TrimPrefix(srcPath, "/d")
 					}
 				}
-
 
 				dstPath := dstRaw
 				// 扩展名替换

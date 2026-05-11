@@ -176,7 +176,7 @@ func (d *AliyunTo115) walkAndSync(ctx context.Context, aliyun aliyunStorage, cur
 		} else {
 			stats.total++
 			fullPath := currentPath + f.GetName()
-			d.processSingleFile(ctx, fullPath, stats)
+			d.processSingleFile(ctx, fullPath, fullPath, stats)
 		}
 	}
 	return nil
@@ -246,23 +246,23 @@ func (d *AliyunTo115) getOrCreateDirID(ctx context.Context, fullPath string) (st
 	return dirObj.GetID(), nil
 }
 
-func (d *AliyunTo115) processSingleFile(ctx context.Context, fullPath string, stats *syncStats) {
-	aliyun, _, err := op.GetStorageAndActualPath(fullPath)
+func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dstPath string, stats *syncStats) {
+	aliyun, _, err := op.GetStorageAndActualPath(srcPath)
 	if err != nil {
-		fmt.Printf("[aliyun_to_115] 获取驱动失败， fullPath=%s : %v\n", fullPath, err)
+		fmt.Printf("[aliyun_to_115] 获取驱动失败， fullPath=%s : %v\n", srcPath, err)
 		return
 	}
 
-	f, err := fs.Get(ctx, fullPath, &fs.GetArgs{NoLog: true})
+	f, err := fs.Get(ctx, srcPath, &fs.GetArgs{NoLog: true})
 	if err != nil {
-		fmt.Printf("[aliyun_to_115] 获取文件对象失败， fullPath=%s : %v\n", fullPath, err)
+		fmt.Printf("[aliyun_to_115] 获取文件对象失败， fullPath=%s : %v\n", srcPath, err)
 		return
 	}
 	if f.IsDir() {
 		return
 	}
 
-	p115DirStr := d.GetStorage().MountPath + path.Dir(fullPath)
+	p115DirStr := d.GetStorage().MountPath + path.Dir(dstPath)
 	p115DirID, err := d.getOrCreateDirID(ctx, p115DirStr)
 	if err != nil {
 		fmt.Printf("[aliyun_to_115] 准备115目录失败 [%s]: %v\n", p115DirStr, err)
@@ -310,16 +310,16 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, fullPath string, st
 	elapsed := time.Since(start)
 
 	if uploadErr != nil || result == nil {
-		fmt.Printf("[aliyun_to_115] 上传失败: %s : %v\n", fullPath, uploadErr)
+		fmt.Printf("[aliyun_to_115] 上传失败: %s : %v\n", srcPath, uploadErr)
 		stats.failed++
 		return
 	}
 
 	if stream.rapidUpload {
-		fmt.Printf("[aliyun_to_115] ⚡ 秒传成功: %s -> 115目录ID(%s) [%v]\n", fullPath, p115DirID, elapsed)
+		fmt.Printf("[aliyun_to_115] ⚡ 秒传成功: %s -> 115目录ID(%s) [%v]\n", srcPath, p115DirID, elapsed)
 		stats.rapid++
 	} else {
-		fmt.Printf("[aliyun_to_115] 📤 正常上传: %s -> 115目录ID(%s) [%v]\n", fullPath, p115DirID, elapsed)
+		fmt.Printf("[aliyun_to_115] 📤 正常上传: %s -> 115目录ID(%s) [%v]\n", srcPath, p115DirID, elapsed)
 		stats.normal++
 	}
 

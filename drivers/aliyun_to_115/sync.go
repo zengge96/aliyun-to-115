@@ -16,6 +16,7 @@ import (
 	"github.com/OpenListTeam/OpenList/v4/pkg/http_range"
 	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
 	"github.com/OpenListTeam/OpenList/v4/internal/op"
+	"github.com/OpenListTeam/OpenList/v4/internal/fs"
 )
 
 type sync115Client struct {
@@ -174,21 +175,26 @@ func (d *AliyunTo115) walkAndSync(ctx context.Context, aliyun aliyunStorage, cur
 		} else {
 			stats.total++
 			fullPath := currentPath + f.GetName()
-			d.processSingleFile(ctx, f, fullPath, p115ParentID, stats)
+			d.processSingleFile(ctx, fullPath, p115ParentID, stats)
 		}
 	}
 	return nil
 }
 
-func (d *AliyunTo115) processSingleFile(ctx context.Context, f model.Obj, fullPath string, p115DirID string, stats *syncStats) {
-
-	fmt.Printf("[aliyun_to_115] fullPath: %s\n", fullPath)
-	aliyun, actualPath, err := op.GetStorageAndActualPath(fullPath)
+func (d *AliyunTo115) processSingleFile(ctx context.Context, fullPath string, p115DirID string, stats *syncStats) {
+	aliyun, _, err := op.GetStorageAndActualPath(fullPath)
 	if err != nil {
-		fmt.Printf("[aliyun_to_115] 驱动不存在\n")
+		fmt.Printf("[aliyun_to_115] 获取驱动失败， fullPath=%s : %v\n", fullPath, err)
 		return
 	}
-	fmt.Printf("[aliyun_to_115] actualPath: %s\n", actualPath)
+
+	f, err := fs.Get(ctx, actualPath, &fs.GetArgs{NoLog: true})
+
+	if err != nil {
+		fmt.Printf("[aliyun_to_115] 获取文件对象， fullPath=%s : %v\n", fullPath, err)
+		return
+	}
+	
 
 	mountPath := d.GetStorage().MountPath
 	cacheKey := mountPath + "/" + f.GetID()

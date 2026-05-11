@@ -9,6 +9,7 @@ import (
 	//"strconv"
 	"strings"
 	"time"
+	"path"
 
 	_115 "github.com/OpenListTeam/OpenList/v4/drivers/115"
 	"github.com/OpenListTeam/OpenList/v4/drivers/aliyundrive_share2open"
@@ -181,7 +182,62 @@ func (d *AliyunTo115) walkAndSync(ctx context.Context, aliyun aliyunStorage, cur
 	return nil
 }
 
-func (d *AliyunTo115) processSingleFile(ctx context.Context, fullPath string, p115DirID string, stats *syncStats) {
+func MkdirAll(ctx context.Context, actualPath string) error {
+	actualPath = strings.TrimSuffix(actualPath, "/")
+	if actualPath == "" || actualPath == "." || actualPath == "/" {
+		return nil
+	}
+
+	_, err := fs.Get(ctx, actualPath, &fs.GetArgs{})
+	if err == nil {
+		return nil
+	}
+
+	if !fs.IsErrNotFound(err) {
+		return err
+	}
+
+	parent := path.Dir(actualPath)
+	if parent != "/" && parent != "." {
+		err = MkdirAll(ctx, parent)
+		if err != nil {
+			return err
+		}
+	}
+
+	err = fs.Mkdir(ctx, actualPath)
+	if err != nil {
+		if strings.Contains(err.Error(), "already exists") {
+			return nil
+		}
+		return err
+	}
+
+	return nil
+}
+
+func (d *AliyunTo115) getOrCreate115DirID(ctx context.Context, fullPath string) (string, error) {
+	dirObj, err := fs.Get(ctx, fullPath, &fs.GetArgs{})
+	if err == nil {
+		if dirObj.IsDir() {
+			return dirObj.GetID(), nil
+		}
+		return "", fmt.Errorf("路径存在但不是文件夹: %s", fullPath)
+	}
+
+	err = fs.Mkdir(ctx, fullPath)
+	if err != nil {
+		return "", fmt.Errorf("创建目录失败: %s, err: %v", fullPath, err)
+	}
+
+	dirObj, err = fs.Get(ctx, fullPath, &fs.GetArgs{})
+	if err != nil {
+		return "", fmt.Errorf("获取新建目录 ID 失败: %s", fullPath)
+	}
+	return dirObj.GetID(), nil
+}
+
+func (d *AliyunTo115) processSingleFile(ctx context.Context, fullPath string, stats *syncStats) {
 	aliyun, _, err := op.GetStorageAndActualPath(fullPath)
 	if err != nil {
 		fmt.Printf("[aliyun_to_115] 获取驱动失败， fullPath=%s : %v\n", fullPath, err)
@@ -189,19 +245,32 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, fullPath string, p1
 	}
 
 	f, err := fs.Get(ctx, fullPath, &fs.GetArgs{NoLog: true})
-
 	if err != nil {
-		fmt.Printf("[aliyun_to_115] 获取文件对象， fullPath=%s : %v\n", fullPath, err)
+		fmt.Printf("[aliyun_to_115] 获取文件对象失败， fullPath=%s : %v\n", fullPath, err)
 		return
 	}
-	
+	if f.IsDir() {
+		return
+	}
 
-	mountPath := d.GetStorage().MountPath
-	cacheKey := mountPath + "/" + f.GetID()
+	aliyunMountPath := aliyun.GetStorage().MountPath
+	pan115FullDirPath := path.Join(d.GetStorage().MountPath, pan115FullDirPath)
+	
+	p115DirID, err := d.getOrCreate115DirID(ctx, pan115FullDirPath)
+	if err != nil {
+		fmt.Printf("[aliyun_to_115] 准备115目录失败 [%s]: %v\n", pan115FullDirPath, err)
+		return
+	}
+	// ----------------------------------------------
+
+	fmt.Printf("pan115FullDirPath=%s, p115DirID=%s\n", pan115FullDirPath, p115DirID)
+
+	// 缓存逻辑
+	cacheKey := aliyunMountPath + "/" + f.GetID()
 	hashInfo := f.GetHash()
 	sha1Str := hashInfo.GetHash(utils.SHA1)
 	if sha1Str != "" {
-		cacheKey = mountPath + "/" + sha1Str
+		cacheKey = aliyunMountPath + "/" + sha1Str
 	}
 
 	d.syncLoopMu.Lock()
@@ -218,6 +287,7 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, fullPath string, p1
 	}
 
 	link, err := aliyun.Link(ctx, f, model.LinkArgs{})
+	// 兼容某些驱动可能重新获取一次 Hash
 	if driver, ok := aliyun.(*aliyundrive_share2open.AliyundriveShare2Open); ok {
 		sha1Str = driver.GetHash(ctx, f, model.LinkArgs{})
 	}
@@ -229,7 +299,8 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, fullPath string, p1
 
 	stream := newUrlFileStreamer(f.GetName(), f.GetSize(), sha1Str, link.URL)
 	start := time.Now()
-	// 上传到对应的 115 目录 ID
+	
+	// 使用动态获取到的 p115DirID 上传
 	result, uploadErr := d.p115Client.uploadTo115(ctx, stream, p115DirID)
 	elapsed := time.Since(start)
 
@@ -240,14 +311,13 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, fullPath string, p1
 	}
 
 	if stream.rapidUpload {
-		fmt.Printf("[aliyun_to_115] ⚡ 秒传成功: %s -> 115目录(%s) [%v]\n", fullPath, p115DirID, elapsed)
+		fmt.Printf("[aliyun_to_115] ⚡ 秒传成功: %s -> 115目录ID(%s) [%v]\n", fullPath, p115DirID, elapsed)
 		stats.rapid++
 	} else {
-		fmt.Printf("[aliyun_to_115] 📤 正常上传: %s -> 115目录(%s) [%v]\n", fullPath, p115DirID, elapsed)
+		fmt.Printf("[aliyun_to_115] 📤 正常上传: %s -> 115目录ID(%s) [%v]\n", fullPath, p115DirID, elapsed)
 		stats.normal++
 	}
 
-	// 如果你希望在 115 中物理保留文件，请注释掉下面这一行
 	if d.DeleteAfterSync {
 		_ = d.p115Client.removeFrom115(ctx, result)
 	}
@@ -255,9 +325,7 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, fullPath string, p1
 	d.syncLoopMu.Lock()
 	d.syncedCache[cacheKey] = true
 	d.syncLoopMu.Unlock()
-
 	d.saveSyncedCache(cacheKey)
-
 	stats.synced++
 }
 

@@ -167,7 +167,7 @@ download_and_extract_strm() {
     local TARGET_DIR=$(dirname "$INPUT_STRM")
     mkdir -p "$TARGET_DIR"
 
-    echo -e ">>> 正在下载strm包...${NC}"
+    echo -e ">>> strm模式已开启，正在下载strm包...${NC}"
     curl -sL -f "$CONST_XIAOYA_STRM_URL" -o "$TEMP_ZIP" || {
         echo -e "${RED}❌ 错误: 下载失败。${NC}"
         exit 1
@@ -271,7 +271,6 @@ check_configs
 download_and_extract_sql
 
 if [ "$CONST_STRM_MODE"x = "true"x ]; then
-    echo "strm模式已开启"
     download_and_extract_strm
 fi
 

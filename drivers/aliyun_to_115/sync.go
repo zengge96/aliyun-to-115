@@ -185,15 +185,6 @@ func (d *AliyunTo115) doSync() {
 
 			srcRaw = "/" + strings.TrimPrefix(srcRaw, "/")
 			dstRaw = "/" + strings.TrimPrefix(dstRaw, "/")
-			
-			// 解析真实 srcPath
-			srcPath := srcRaw
-			if strings.HasPrefix(srcRaw, "http://") || strings.HasPrefix(srcRaw, "https://") {
-				if u, err := url.Parse(srcRaw); err == nil {
-					srcPath, _ = url.QueryUnescape(u.Path)
-					srcPath = strings.TrimPrefix(srcPath, "/d")
-				}
-			}
 
 			dstPath := dstRaw
 			srcExt := filepath.Ext(srcPath)
@@ -203,10 +194,28 @@ func (d *AliyunTo115) doSync() {
 					dstPath = strings.TrimSuffix(dstRaw, ext) + srcExt
 				}
 			}
-
-			if err := d.processSingleFile(ctx, srcPath, dstPath, stats); err == nil {
-				db2.Exec("DELETE FROM strm_tasks WHERE id = ?", recID)
+			
+			srcPath := srcRaw
+			if strings.HasPrefix(srcRaw, "http://xiaoya.host") || strings.HasPrefix(srcRaw, "https://xiaoya.host") {
+				if u, err := url.Parse(srcRaw); err == nil {
+					srcPath, _ = url.QueryUnescape(u.Path)
+					srcPath = strings.TrimPrefix(srcPath, "/d")
+				}
 			}
+
+			if strings.HasPrefix(srcRaw, "http://") || strings.HasPrefix(srcRaw, "https://") {
+				if err := d.processSingleFile_http(ctx, srcPath, dstPath, stats); err == nil {
+					db2.Exec("DELETE FROM strm_tasks WHERE id = ?", recID)
+				}
+			} else if strings.HasPrefix(srcRaw, "file://") {
+				if err := d.processSingleFile_file(ctx, srcPath, dstPath, stats); err == nil {
+					db2.Exec("DELETE FROM strm_tasks WHERE id = ?", recID)
+				}
+			} else {
+				if err := d.processSingleFile(ctx, srcPath, dstPath, stats); err == nil {
+					db2.Exec("DELETE FROM strm_tasks WHERE id = ?", recID)
+				}
+			}	
 		}
 
 		fmt.Printf("[aliyun_to_115] ===== strm模式同步完成: 发现%v / 跳过%v / 秒传%v / 正常%v / 失败%v =====\n",
@@ -318,6 +327,87 @@ func (d *AliyunTo115) getOrCreateDirID(ctx context.Context, fullPath string) (st
 	}
 	
 	return dirObj.GetID(), nil
+}
+
+func (d *AliyunTo115) processSingleFile_http(ctx context.Context, srcPath string, dstPath string, stats *syncStats) error {
+
+	p115DirStr := d.GetStorage().MountPath + path.Dir(dstPath)
+	p115DirID, err := d.getOrCreateDirID(ctx, p115DirStr)
+	if err != nil {
+		fmt.Printf("[aliyun_to_115] 准备115目录失败 [%s]: %v\n", p115DirStr, err)
+		return err
+	}
+
+	// todo: 
+	// 1、下载文件到内存（不大于100M），大于100M丢弃。
+	// 2、实现一个newMemStreamer
+	stream := newMemStreamer(path.Base(dstPath), f.GetSize(), sha1Str, srcPath)
+	start := time.Now()
+	
+	// 使用动态获取到的 p115DirID 上传
+	result, uploadErr := d.p115Client.uploadTo115(ctx, stream, p115DirID)
+	elapsed := time.Since(start)
+
+	if uploadErr != nil || result == nil {
+		fmt.Printf("[aliyun_to_115] 上传失败: %s : %v\n", srcPath, uploadErr)
+		stats.failed++
+		return uploadErr
+	}
+
+	if stream.rapidUpload {
+		fmt.Printf("[aliyun_to_115] ⚡ 秒传成功: %s -> 115目录ID(%s) [%v]\n", srcPath, p115DirID, elapsed)
+		stats.rapid++
+	} else {
+		fmt.Printf("[aliyun_to_115] 📤 正常上传: %s -> 115目录ID(%s) [%v]\n", srcPath, p115DirID, elapsed)
+		stats.normal++
+	}
+
+	if d.DeleteAfterSync {
+		_ = d.p115Client.removeFrom115(ctx, result)
+	}
+
+	stats.synced++
+	return nil
+}
+
+func (d *AliyunTo115) processSingleFile_file(ctx context.Context, srcPath string, dstPath string, stats *syncStats) error {
+
+	p115DirStr := d.GetStorage().MountPath + path.Dir(dstPath)
+	p115DirID, err := d.getOrCreateDirID(ctx, p115DirStr)
+	if err != nil {
+		fmt.Printf("[aliyun_to_115] 准备115目录失败 [%s]: %v\n", p115DirStr, err)
+		return err
+	}
+
+	// todo: 
+	// 实现一个newFileStreamer， srcPath截取file://后的部分
+	stream := newFileStreamer(path.Base(dstPath), f.GetSize(), sha1Str, srcPath)
+	start := time.Now()
+	
+	// 使用动态获取到的 p115DirID 上传
+	result, uploadErr := d.p115Client.uploadTo115(ctx, stream, p115DirID)
+	elapsed := time.Since(start)
+
+	if uploadErr != nil || result == nil {
+		fmt.Printf("[aliyun_to_115] 上传失败: %s : %v\n", srcPath, uploadErr)
+		stats.failed++
+		return uploadErr
+	}
+
+	if stream.rapidUpload {
+		fmt.Printf("[aliyun_to_115] ⚡ 秒传成功: %s -> 115目录ID(%s) [%v]\n", srcPath, p115DirID, elapsed)
+		stats.rapid++
+	} else {
+		fmt.Printf("[aliyun_to_115] 📤 正常上传: %s -> 115目录ID(%s) [%v]\n", srcPath, p115DirID, elapsed)
+		stats.normal++
+	}
+
+	if d.DeleteAfterSync {
+		_ = d.p115Client.removeFrom115(ctx, result)
+	}
+	
+	stats.synced++
+	return nil
 }
 
 func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dstPath string, stats *syncStats) error {

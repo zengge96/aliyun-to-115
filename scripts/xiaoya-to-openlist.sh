@@ -391,4 +391,7 @@ else
     echo "!!! 数据库同步过程中出错，请检查。"
 fi
 
-echo ">>> 数据全部准备就绪，请手工执行：./openlist server"
+echo ">>> 数据全部准备就绪，并自动运行openlist同步服务。下次运行可手工执行：./openlist server"
+echo
+
+"$OPENLIST_BIN" server

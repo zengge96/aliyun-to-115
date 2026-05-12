@@ -613,7 +613,7 @@ func (f *memFileStreamer) CacheFullAndWriter(up *model.UpdateProgress, w io.Writ
 	return bytes.NewReader(f.data), nil
 }
 
-func (f *memFileStreamer) GetFile() model.File  { return nil }
+func (f *memFileStreamer) GetFile() model.File  { return bytes.NewReader(f.data) }
 
 func (f *memFileStreamer) Read(p []byte) (n int, err error) {
 	if f.offset >= f.size {
@@ -683,7 +683,7 @@ func (f *fileStreamer) CacheFullAndWriter(up *model.UpdateProgress, w io.Writer)
 	return f.file, nil
 }
 
-func (f *fileStreamer) GetFile() model.File   { return nil }
+func (f *fileStreamer) GetFile() model.File   { f.file.Seek(0, io.SeekStart); return f.file }
 
 func (f *fileStreamer) Read(p []byte) (n int, err error) {
 	n, err = f.file.Read(p)

@@ -576,15 +576,25 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 	return nil
 }
 
+type memFileReader struct {
+	*bytes.Reader
+}
 
-// memFileStreamer 将完整文件内容保留在内存中，支持秒传
+func (m *memFileReader) Close() error {
+	return nil
+}
+
 type memFileStreamer struct {
-	name         string
-	size         int64
-	sha1Str      string
-	data         []byte
-	offset       int64
-	rapidUpload  bool
+	name        string
+	size        int64
+	sha1Str     string
+	data        []byte
+	offset      int64
+	rapidUpload bool
+}
+
+func newMemFileStreamer(name string, size int64, sha1Str string, data []byte) *memFileStreamer {
+	return &memFileStreamer{name: name, size: size, sha1Str: sha1Str, data: data}
 }
 
 func (f *memFileStreamer) GetID() string         { return "" }
@@ -600,18 +610,23 @@ func (f *memFileStreamer) GetPath() string       { return "" }
 func (f *memFileStreamer) GetMimetype() string   { return "application/octet-stream" }
 func (f *memFileStreamer) NeedStore() bool       { return true }
 func (f *memFileStreamer) IsForceStreamUpload() bool { return false }
-func (f *memFileStreamer) GetExist() model.Obj  { return nil }
-func (f *memFileStreamer) SetExist(model.Obj)   {}
+func (f *memFileStreamer) GetExist() model.Obj   { return nil }
+func (f *memFileStreamer) SetExist(model.Obj)    {}
 func (f *memFileStreamer) Add(io.Closer)         {}
-func (f *memFileStreamer) AddIfCloser(any)      {}
+func (f *memFileStreamer) AddIfCloser(any)       {}
+
 func (f *memFileStreamer) CacheFullAndWriter(up *model.UpdateProgress, w io.Writer) (model.File, error) {
 	if w != nil {
-		w.Write(f.data)
+		if _, err := w.Write(f.data); err != nil {
+			return nil, err
+		}
 	}
-	return bytes.NewReader(f.data), nil
+	return f.GetFile(), nil
 }
 
-func (f *memFileStreamer) GetFile() model.File  { return bytes.NewReader(f.data) }
+func (f *memFileStreamer) GetFile() model.File {
+	return &memFileReader{Reader: bytes.NewReader(f.data)}
+}
 
 func (f *memFileStreamer) Read(p []byte) (n int, err error) {
 	if f.offset >= f.size {
@@ -627,22 +642,22 @@ func (f *memFileStreamer) Read(p []byte) (n int, err error) {
 	return int(toRead), nil
 }
 
-func (f *memFileStreamer) Close() error { return nil }
+func (f *memFileStreamer) Close() error { 
+	return nil 
+}
 
 func (f *memFileStreamer) RangeRead(ra http_range.Range) (io.Reader, error) {
 	start := ra.Start
-	if start > f.size {
-		start = f.size
+	if start >= f.size {
+		return bytes.NewReader(nil), nil
 	}
+	
 	end := start + ra.Length
 	if end > f.size {
 		end = f.size
 	}
-	return io.NopCloser(strings.NewReader(string(f.data[start:end]))), nil
-}
-
-func newMemFileStreamer(name string, size int64, sha1Str string, data []byte) *memFileStreamer {
-	return &memFileStreamer{name: name, size: size, sha1Str: sha1Str, data: data}
+	
+	return bytes.NewReader(f.data[start:end]), nil
 }
 
 // fileStreamer 读取本地文件进行上传

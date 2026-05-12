@@ -2,7 +2,6 @@ package aliyun_to_115
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -128,76 +127,113 @@ func (d *AliyunTo115) doSync() {
 	// ========== strm.txt 模式检测 ==========
 	cwd, _ := os.Getwd()
 	strmFile := filepath.Join(cwd, "strm.txt")
+	strmWorkFile := filepath.Join(cwd, "strm_work.txt")
+	strmSuccessFile := filepath.Join(cwd, "strm_success.txt")
 	if _, err := os.Stat(strmFile); err == nil {
 		// strm.txt 存在，切换为文件同步模式
-		strmData, err := os.ReadFile(strmFile)
-		checkpointFile := filepath.Join(cwd, "strm_sync_checkpoint.json")
-		if err != nil {
-			fmt.Printf("[aliyun_to_115] 读取 strm.txt 失败: %v\n", err)
-		} else {
-			// 读取断点
-			startIndex := 0
-			if data, err := os.ReadFile(checkpointFile); err == nil {
-				var ck struct {
-					LastIndex int `json:"last_index"`
-					Total     int `json:"total"`
-				}
-				if json.Unmarshal(data, &ck) == nil {
-					startIndex = ck.LastIndex + 1
-					fmt.Printf("[aliyun_to_115] 断点续传：从第 %d 行继续（共 %d 行）\n", startIndex, ck.Total)
-				}
+
+		// 第1步：准备 strm_work.txt（首次运行从 strm.txt 复制）
+		if _, err := os.Stat(strmWorkFile); os.IsNotExist(err) {
+			data, err := os.ReadFile(strmFile)
+			if err != nil {
+				fmt.Printf("[aliyun_to_115] 读取 strm.txt 失败: %v\n", err)
+				return
 			}
-
-			lines := strings.Split(strings.TrimSpace(string(strmData)), "\n")
-			totalLines := len(lines)
-
-			for i, line := range lines {
-				if i < startIndex {
-					continue
-				}
-				line = strings.TrimSpace(line)
-				if line == "" || strings.HasPrefix(line, "#") {
-					continue
-				}
-				parts := strings.SplitN(line, "#", 2)
-				if len(parts) != 2 {
-					continue
-				}
-				dstRaw := strings.TrimSpace(parts[0])
-				dstRaw = "/" + strings.TrimPrefix(dstRaw, "/")
-				srcRaw := strings.TrimSpace(parts[1])
-
-				// 解析出真实 srcPath：如果是 HTTP URL 则提取路径部分并做 URL decode
-				srcPath := srcRaw
-				if strings.HasPrefix(srcRaw, "http://") || strings.HasPrefix(srcRaw, "https://") {
-					if u, err := url.Parse(srcRaw); err == nil {
-						srcPath, _ = url.QueryUnescape(u.Path)
-						srcPath = strings.TrimPrefix(srcPath, "/d")
-					}
-				}
-
-				dstPath := dstRaw
-				// 扩展名替换
-				srcExt := filepath.Ext(srcPath)
-				if srcExt != "" {
-					ext := filepath.Ext(dstRaw)
-					if ext != "" {
-						dstPath = strings.TrimSuffix(dstRaw, ext) + srcExt
-					}
-				}
-
-				//fmt.Printf("[aliyun_to_115] strm: src=%s -> dst=%s\n", srcPath, dstPath)
-				d.processSingleFile(ctx, srcPath, dstPath, stats)
-
-				// 更新断点
-				if ckData, err := json.Marshal(map[string]int{"last_index": i, "total": totalLines}); err == nil {
-					os.WriteFile(checkpointFile, ckData, 0644)
-				}
-			}
+			fmt.Printf("[aliyun_to_115] strm.txt 首次运行，复制为 strm_work.txt\n")
+			os.WriteFile(strmWorkFile, data, 0644)
 		}
+
+		// 第2步：如果 strm_success.txt 存在，从 strm_work.txt 中过滤掉已成功的行
+		if successData, err := os.ReadFile(strmSuccessFile); err == nil {
+			successSet := make(map[string]bool)
+			for _, line := range strings.Split(strings.TrimSpace(string(successData)), "\n") {
+				line = strings.TrimSpace(line)
+				if line != "" {
+					successSet[line] = true
+				}
+			}
+
+			// 读取 strm_work.txt，过滤掉已成功的行
+			workData, err := os.ReadFile(strmWorkFile)
+			if err == nil {
+				var filteredLines []string
+				for _, line := range strings.Split(strings.TrimSpace(string(workData)), "\n") {
+					line = strings.TrimSpace(line)
+					if line == "" || strings.HasPrefix(line, "#") {
+						continue
+					}
+					if !successSet[line] {
+						filteredLines = append(filteredLines, line)
+					}
+				}
+				newWork := strings.Join(filteredLines, "\n") + "\n"
+				os.WriteFile(strmWorkFile, []byte(newWork), 0644)
+			}
+
+			// 删除 strm_success.txt
+			os.Remove(strmSuccessFile)
+			fmt.Printf("[aliyun_to_115] 过滤完成，已从 strm_work.txt 移除 %d 条已成功记录\n", len(successSet))
+		}
+
+		// 第3步：读取 strm_work.txt 并逐行处理
+		workData, err := os.ReadFile(strmWorkFile)
+		if err != nil {
+			fmt.Printf("[aliyun_to_115] 读取 strm_work.txt 失败: %v\n", err)
+			return
+		}
+
+		lines := strings.Split(strings.TrimSpace(string(workData)), "\n")
+		_ = len(lines) // totalLines
+		processedCount := 0
+
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			parts := strings.SplitN(line, "#", 2)
+			if len(parts) != 2 {
+				continue
+			}
+			dstRaw := strings.TrimSpace(parts[0])
+			dstRaw = "/" + strings.TrimPrefix(dstRaw, "/")
+			srcRaw := strings.TrimSpace(parts[1])
+
+			// 解析出真实 srcPath：如果是 HTTP URL 则提取路径部分并做 URL decode
+			srcPath := srcRaw
+			if strings.HasPrefix(srcRaw, "http://") || strings.HasPrefix(srcRaw, "https://") {
+				if u, err := url.Parse(srcRaw); err == nil {
+					srcPath, _ = url.QueryUnescape(u.Path)
+					srcPath = strings.TrimPrefix(srcPath, "/d")
+				}
+			}
+
+			dstPath := dstRaw
+			// 扩展名替换
+			srcExt := filepath.Ext(srcPath)
+			if srcExt != "" {
+				ext := filepath.Ext(dstRaw)
+				if ext != "" {
+					dstPath = strings.TrimSuffix(dstRaw, ext) + srcExt
+				}
+			}
+
+			// 处理这一行
+			d.processSingleFile(ctx, srcPath, dstPath, stats)
+			processedCount++
+
+			// 成功后追加到 strm_success.txt
+			os.WriteFile(strmSuccessFile, []byte(line+"\n"), 0644)
+		}
+
+		// 第4步：同步完成，删除 strm_work.txt（strm_success.txt 已为空文件/已删）
+		if processedCount > 0 {
+			os.Remove(strmWorkFile)
+			fmt.Printf("[aliyun_to_115] strm_work.txt 已清理\n")
+		}
+
 		fmt.Printf("[aliyun_to_115] ===== strm模式同步完成: 发现%v / 跳过%v / 秒传%v / 正常%v / 失败%v =====\n",
 			stats.total, stats.skipped, stats.rapid, stats.normal, stats.failed)
-		os.Remove(checkpointFile)
 		return
 	}
 

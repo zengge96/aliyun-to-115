@@ -647,19 +647,22 @@ func newMemFileStreamer(name string, size int64, sha1Str string, data []byte) *m
 
 // fileStreamer 读取本地文件进行上传
 type fileStreamer struct {
-	name         string
-	size         int64
-	sha1Str      string
-	file         *os.File
-	offset       int64
-	rapidUpload  bool
+	name        string
+	size        int64
+	sha1Str     string
+	file        *os.File
+	rapidUpload bool
+}
+
+func newFileStreamer(name string, size int64, sha1Str string, file *os.File) *fileStreamer {
+	return &fileStreamer{name: name, size: size, sha1Str: sha1Str, file: file}
 }
 
 func (f *fileStreamer) GetID() string         { return "" }
 func (f *fileStreamer) GetName() string       { return f.name }
 func (f *fileStreamer) SetPath(path string)   { _ = path }
 func (f *fileStreamer) SetRapidUpload(b bool) { f.rapidUpload = b }
-func (f *fileStreamer) GetSize() int64       { return f.size }
+func (f *fileStreamer) GetSize() int64        { return f.size }
 func (f *fileStreamer) ModTime() time.Time    { return time.Time{} }
 func (f *fileStreamer) CreateTime() time.Time { return time.Time{} }
 func (f *fileStreamer) IsDir() bool           { return false }
@@ -672,109 +675,42 @@ func (f *fileStreamer) GetExist() model.Obj   { return nil }
 func (f *fileStreamer) SetExist(model.Obj)    {}
 func (f *fileStreamer) Add(io.Closer)         {}
 func (f *fileStreamer) AddIfCloser(any)       {}
+
 func (f *fileStreamer) CacheFullAndWriter(up *model.UpdateProgress, w io.Writer) (model.File, error) {
-	f.file.Seek(0, io.SeekStart)
+	_, err := f.file.Seek(0, io.SeekStart)
+	if err != nil {
+		return nil, err
+	}
 	if w != nil {
-		io.Copy(w, f.file)
+		_, err = io.Copy(w, f.file)
+		if err != nil {
+			return nil, err
+		}
 		f.file.Seek(0, io.SeekStart)
 	}
 	return f.file, nil
 }
 
-func (f *fileStreamer) GetFile() model.File   { f.file.Seek(0, io.SeekStart); return f.file }
+func (f *fileStreamer) GetFile() model.File { 
+	f.file.Seek(0, io.SeekStart)
+	return f.file 
+}
 
 func (f *fileStreamer) Read(p []byte) (n int, err error) {
-	n, err = f.file.Read(p)
-	if n > 0 {
-		f.offset += int64(n)
-	}
-	return
+	return f.file.Read(p)
 }
 
-func (f *fileStreamer) Close() error { return f.file.Close() }
+func (f *fileStreamer) Close() error { 
+	return f.file.Close() 
+}
 
+// 重点修复部位：支持高并发分片读取
 func (f *fileStreamer) RangeRead(ra http_range.Range) (io.Reader, error) {
-	_, err := f.file.Seek(ra.Start, io.SeekStart)
-	if err != nil {
-		return nil, err
+	if f.file == nil {
+		return nil, os.ErrClosed
 	}
-	return io.LimitReader(f.file, ra.Length), nil
-}
-
-func newFileStreamer(name string, size int64, sha1Str string, file *os.File) *fileStreamer {
-	return &fileStreamer{name: name, size: size, sha1Str: sha1Str, file: file}
-}
-
-type urlFileStreamer struct {
-	name     string
-	path     string
-	size     int64
-	sha1Str  string
-	url      string
-	rapidUpload bool
-	reader      io.Reader
-	readerClose func() error
-	file      model.File   // 缓存虚拟文件，避免重复创建
-}
-
-func (f *urlFileStreamer) GetID() string            { return "" }
-func (f *urlFileStreamer) GetName() string          { return f.name }
-func (f *urlFileStreamer) SetPath(path string)       { f.path = path }
-func (f *urlFileStreamer) SetRapidUpload(b bool)     { f.rapidUpload = b }
-func (f *urlFileStreamer) GetSize() int64            { return f.size }
-func (f *urlFileStreamer) ModTime() time.Time        { return time.Time{} }
-func (f *urlFileStreamer) CreateTime() time.Time     { return time.Time{} }
-func (f *urlFileStreamer) IsDir() bool               { return false }
-func (f *urlFileStreamer) GetHash() utils.HashInfo { return utils.NewHashInfo(utils.SHA1, f.sha1Str) }
-func (f *urlFileStreamer) GetPath() string           { return f.path }
-func (f *urlFileStreamer) GetMimetype() string       { return "application/octet-stream" }
-func (f *urlFileStreamer) NeedStore() bool           { return true }
-func (f *urlFileStreamer) IsForceStreamUpload() bool { return false }
-func (f *urlFileStreamer) GetExist() model.Obj        { return nil }
-func (f *urlFileStreamer) SetExist(model.Obj)        {}
-func (f *urlFileStreamer) Add(io.Closer)             {}
-func (f *urlFileStreamer) AddIfCloser(any)           {}
-
-func newUrlFileStreamer(name string, size int64, sha1Str, url string) *urlFileStreamer {
-	return &urlFileStreamer{name: name, size: size, sha1Str: sha1Str, url: url}
-}
-
-func (f *urlFileStreamer) Read(p []byte) (n int, err error) {
-	if f.reader == nil {
-		req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, f.url, nil)
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			return 0, err
-		}
-		f.reader = resp.Body
-		f.readerClose = resp.Body.Close
-	}
-	return f.reader.Read(p)
-}
-
-func (f *urlFileStreamer) Close() error {
-	if f.readerClose != nil {
-		f.readerClose()
-		f.readerClose = nil
-	}
-	return nil
-}
-
-func (f *urlFileStreamer) RangeRead(ra http_range.Range) (io.Reader, error) {
-	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, f.url, nil)
-	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", ra.Start, ra.Start+ra.Length-1))
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	return resp.Body, nil
-}
-
-func (f *urlFileStreamer) GetFile() model.File {
-	if f.file != nil {
-		f.file.Seek(0, io.SeekStart)
-	}
-	return f.file
+	// 使用 io.NewSectionReader，它依赖 ReadAt 进行无状态读取，不会互相干扰
+	return io.NewSectionReader(f.file, ra.Start, ra.Length), nil
 }
 
 // VirtualFile 按需发 HTTP Range 请求，不落盘

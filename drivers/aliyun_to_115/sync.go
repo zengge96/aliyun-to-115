@@ -102,15 +102,14 @@ func (d *AliyunTo115) doSync() {
 	}
 
 	// ========== strm.txt 模式检测（SQLite） ==========
-	cwd, _ := os.Getwd()
-	strmFile := filepath.Join(cwd, "strm.txt")
-	strmDBFile := filepath.Join(cwd, "data", "work.db")
+	strmFile := filepath.Join(d.basePath, "strm.txt")
+	strmDBFile := filepath.Join(d.basePath, "data", "work.db")
 
 	if _, err := os.Stat(strmFile); err == nil {
 		// strm.txt 存在，切换为文件同步模式
 
 		// 初始化 SQLite
-		if err := os.MkdirAll(filepath.Join(cwd, "data"), 0755); err != nil {
+		if err := os.MkdirAll(filepath.Join(d.basePath, "data"), 0755); err != nil {
 			fmt.Printf("[aliyun_to_115] 创建data目录失败: %v\n", err)
 			return
 		}

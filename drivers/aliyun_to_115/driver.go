@@ -2,19 +2,22 @@ package aliyun_to_115
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
+	"time"
 
 	_115 "github.com/OpenListTeam/OpenList/v4/drivers/115"
 	_115_share "github.com/OpenListTeam/OpenList/v4/drivers/115_share"
 	aliyundrive_open "github.com/OpenListTeam/OpenList/v4/drivers/aliyundrive_open"
 	aliyundrive_share2open "github.com/OpenListTeam/OpenList/v4/drivers/aliyundrive_share2open"
-	"github.com/OpenListTeam/OpenList/v4/internal/db"
 	"github.com/OpenListTeam/OpenList/v4/internal/driver"
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
+	"github.com/OpenListTeam/OpenList/v4/internal/db"
 	"github.com/OpenListTeam/OpenList/v4/internal/op"
-	"time"
 )
 
 // aliyunStorage unifies AliyundriveOpen, AliyundriveShare2Open and 115Share for sync.
@@ -31,7 +34,9 @@ type AliyunTo115 struct {
 	p115Client  *sync115Client
 	syncLoopMu  sync.Mutex
 	syncRunning bool
-	syncedCache map[string]bool // SHA1 → true
+	syncCacheDB *sql.DB
+	syncedCache  map[string]bool // SHA1 → true
+	basePath     string
 }
 
 func (d *AliyunTo115) Config() driver.Config { return config }
@@ -93,21 +98,34 @@ func (d *AliyunTo115) Init(ctx context.Context) error {
 	d.p115Client = p115Client
 	d.syncedCache = make(map[string]bool)
 
-	err = db.GetDb().Exec("CREATE TABLE IF NOT EXISTS aliyun_sync_cache (cache_key TEXT PRIMARY KEY, synced_at DATETIME DEFAULT CURRENT_TIMESTAMP)").Error
+	// 打开 work.db（SQLite），与 strm_tasks 表同一库
+	d.basePath, _ = os.Getwd()
+	workDBPath := filepath.Join(d.basePath, "data", "work.db")
+	if err := os.MkdirAll(filepath.Join(d.basePath, "data"), 0755); err != nil {
+		return fmt.Errorf("create data dir failed: %w", err)
+	}
+	d.syncCacheDB, err = sql.Open("sqlite3", workDBPath)
 	if err != nil {
+		return fmt.Errorf("open work.db failed: %w", err)
+	}
+	if _, err := d.syncCacheDB.Exec(`CREATE TABLE IF NOT EXISTS aliyun_sync_cache (cache_key TEXT PRIMARY KEY, synced_at DATETIME DEFAULT CURRENT_TIMESTAMP)`); err != nil {
 		return fmt.Errorf("create cache table failed: %w", err)
 	}
 
-	var records []AliyunSyncCache
-	if err := db.GetDb().Find(&records).Error; err != nil {
+	rows, err := d.syncCacheDB.Query("SELECT cache_key FROM aliyun_sync_cache")
+	if err != nil {
 		fmt.Printf("[aliyun_to_115] load cache error: %v\n", err)
+	} else {
+		for rows.Next() {
+			var k string
+			if rows.Scan(&k) == nil {
+				d.syncedCache[k] = true
+			}
+		}
+		rows.Close()
 	}
-
-	for _, r := range records {
-		d.syncedCache[r.CacheKey] = true
-	}
-	if len(records) > 0 {
-		fmt.Printf("[aliyun_to_115] 从数据库加载 %d 条同步记录\n", len(records))
+	if len(d.syncedCache) > 0 {
+		fmt.Printf("[aliyun_to_115] 从work.db加载 %d 条同步记录\n", len(d.syncedCache))
 	}
 
 	go d.doSyncLoop()
@@ -211,10 +229,7 @@ func (d *AliyunTo115) SetStorage(s model.Storage) {
 
 // saveSyncedCache 持久化 cache key 到数据库
 func (d *AliyunTo115) saveSyncedCache(cacheKey string) {
-	err := db.GetDb().Create(&AliyunSyncCache{
-		CacheKey: cacheKey,
-		SyncedAt: time.Now(),
-	}).Error
+	_, err := d.syncCacheDB.Exec("INSERT OR IGNORE INTO aliyun_sync_cache(cache_key, synced_at) VALUES (?, ?)", cacheKey, time.Now())
 	if err != nil {
 		fmt.Printf("[aliyun_to_115] 持久化 cache key 失败 [%s]: %v\n", cacheKey, err)
 	}

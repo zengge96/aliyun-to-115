@@ -12,6 +12,7 @@ import (
 	"time"
 	"database/sql"
 	"os"
+	"bytes"
 	"path"
 	"path/filepath"
 	_ "github.com/mattn/go-sqlite3"
@@ -186,6 +187,14 @@ func (d *AliyunTo115) doSync() {
 			srcRaw = "/" + strings.TrimPrefix(srcRaw, "/")
 			dstRaw = "/" + strings.TrimPrefix(dstRaw, "/")
 
+			srcPath := srcRaw
+			if strings.HasPrefix(srcRaw, "http://xiaoya.host") || strings.HasPrefix(srcRaw, "https://xiaoya.host") {
+				if u, err := url.Parse(srcRaw); err == nil {
+					srcPath, _ = url.QueryUnescape(u.Path)
+					srcPath = strings.TrimPrefix(srcPath, "/d")
+				}
+			}
+
 			dstPath := dstRaw
 			srcExt := filepath.Ext(srcPath)
 			if srcExt != "" {
@@ -194,14 +203,7 @@ func (d *AliyunTo115) doSync() {
 					dstPath = strings.TrimSuffix(dstRaw, ext) + srcExt
 				}
 			}
-			
-			srcPath := srcRaw
-			if strings.HasPrefix(srcRaw, "http://xiaoya.host") || strings.HasPrefix(srcRaw, "https://xiaoya.host") {
-				if u, err := url.Parse(srcRaw); err == nil {
-					srcPath, _ = url.QueryUnescape(u.Path)
-					srcPath = strings.TrimPrefix(srcPath, "/d")
-				}
-			}
+
 
 			if strings.HasPrefix(srcRaw, "http://") || strings.HasPrefix(srcRaw, "https://") {
 				if err := d.processSingleFile_http(ctx, srcPath, dstPath, stats); err == nil {
@@ -330,7 +332,6 @@ func (d *AliyunTo115) getOrCreateDirID(ctx context.Context, fullPath string) (st
 }
 
 func (d *AliyunTo115) processSingleFile_http(ctx context.Context, srcPath string, dstPath string, stats *syncStats) error {
-
 	p115DirStr := d.GetStorage().MountPath + path.Dir(dstPath)
 	p115DirID, err := d.getOrCreateDirID(ctx, p115DirStr)
 	if err != nil {
@@ -338,13 +339,57 @@ func (d *AliyunTo115) processSingleFile_http(ctx context.Context, srcPath string
 		return err
 	}
 
-	// todo: 
-	// 1、下载文件到内存（不大于100M），大于100M丢弃。
-	// 2、实现一个newMemStreamer
-	stream := newMemStreamer(path.Base(dstPath), f.GetSize(), sha1Str, srcPath)
+	// 1. HEAD 请求获取文件大小
+	req, _ := http.NewRequestWithContext(ctx, http.MethodHead, srcPath, nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		fmt.Printf("[aliyun_to_115] HEAD请求失败 [%s]: %v\n", srcPath, err)
+		stats.failed++
+		return err
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 200 {
+		fmt.Printf("[aliyun_to_115] HEAD请求非200 [%s]: status=%d\n", srcPath, resp.StatusCode)
+		stats.failed++
+		return fmt.Errorf("HEAD status %d", resp.StatusCode)
+	}
+	fileSize := resp.ContentLength
+	if fileSize <= 0 {
+		fmt.Printf("[aliyun_to_115] 无法获取文件大小 [%s]\n", srcPath)
+		stats.failed++
+		return fmt.Errorf("content-length invalid")
+	}
+
+	// 2. 超过100MB跳过
+	if fileSize > 100*1024*1024 {
+		fmt.Printf("[aliyun_to_115] 文件超过100MB跳过 [%s]: %d\n", srcPath, fileSize)
+		stats.skipped++
+		return nil
+	}
+
+	// 3. 下载完整内容到内存
+	resp2, err := http.DefaultClient.Do(req.WithContext(ctx))
+	if err != nil {
+		fmt.Printf("[aliyun_to_115] 下载失败 [%s]: %v\n", srcPath, err)
+		stats.failed++
+		return err
+	}
+	defer resp2.Body.Close()
+	data, err := io.ReadAll(io.LimitReader(resp2.Body, 100*1024*1024+1))
+	if err != nil || int64(len(data)) != fileSize {
+		fmt.Printf("[aliyun_to_115] 读取内容失败 [%s]: %v\n", srcPath, err)
+		stats.failed++
+		return err
+	}
+
+	// 4. 计算 SHA1
+	sha1Str := utils.HashData(utils.SHA1, data)
+
+	// 5. 创建内存流
+	stream := newMemFileStreamer(path.Base(dstPath), fileSize, sha1Str, data)
+
+	// 6. 上传
 	start := time.Now()
-	
-	// 使用动态获取到的 p115DirID 上传
 	result, uploadErr := d.p115Client.uploadTo115(ctx, stream, p115DirID)
 	elapsed := time.Since(start)
 
@@ -371,7 +416,6 @@ func (d *AliyunTo115) processSingleFile_http(ctx context.Context, srcPath string
 }
 
 func (d *AliyunTo115) processSingleFile_file(ctx context.Context, srcPath string, dstPath string, stats *syncStats) error {
-
 	p115DirStr := d.GetStorage().MountPath + path.Dir(dstPath)
 	p115DirID, err := d.getOrCreateDirID(ctx, p115DirStr)
 	if err != nil {
@@ -379,12 +423,48 @@ func (d *AliyunTo115) processSingleFile_file(ctx context.Context, srcPath string
 		return err
 	}
 
-	// todo: 
-	// 实现一个newFileStreamer， srcPath截取file://后的部分
-	stream := newFileStreamer(path.Base(dstPath), f.GetSize(), sha1Str, srcPath)
+	// 去掉 file:// 前缀得到真实路径
+	localPath := strings.TrimPrefix(srcPath, "file://")
+	if localPath == srcPath {
+		localPath = strings.TrimPrefix(srcPath, "file:")
+	}
+
+	// 打开文件用于计算 SHA1
+	f, err := os.Open(localPath)
+	if err != nil {
+		fmt.Printf("[aliyun_to_115] 打开文件失败 [%s]: %v\n", localPath, err)
+		stats.failed++
+		return err
+	}
+	defer f.Close()
+
+	fi, err := f.Stat()
+	if err != nil {
+		fmt.Printf("[aliyun_to_115] 获取文件信息失败 [%s]: %v\n", localPath, err)
+		stats.failed++
+		return err
+	}
+	fileSize := fi.Size()
+
+	// 计算 SHA1（utils.HashFile 会自动 Seek 回开头）
+	sha1Str, err := utils.HashFile(utils.SHA1, f)
+	if err != nil {
+		fmt.Printf("[aliyun_to_115] 计算SHA1失败 [%s]: %v\n", localPath, err)
+		stats.failed++
+		return err
+	}
+
+	// 重新打开用于上传
+	f2, err := os.Open(localPath)
+	if err != nil {
+		stats.failed++
+		return err
+	}
+	defer f2.Close()
+
+	stream := newFileStreamer(path.Base(dstPath), fileSize, sha1Str, f2)
+
 	start := time.Now()
-	
-	// 使用动态获取到的 p115DirID 上传
 	result, uploadErr := d.p115Client.uploadTo115(ctx, stream, p115DirID)
 	elapsed := time.Since(start)
 
@@ -405,7 +485,7 @@ func (d *AliyunTo115) processSingleFile_file(ctx context.Context, srcPath string
 	if d.DeleteAfterSync {
 		_ = d.p115Client.removeFrom115(ctx, result)
 	}
-	
+
 	stats.synced++
 	return nil
 }
@@ -496,6 +576,135 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 	d.saveSyncedCache(cacheKey)
 	stats.synced++
 	return nil
+}
+
+
+// memFileStreamer 将完整文件内容保留在内存中，支持秒传
+type memFileStreamer struct {
+	name         string
+	size         int64
+	sha1Str      string
+	data         []byte
+	offset       int64
+	rapidUpload  bool
+}
+
+func (f *memFileStreamer) GetID() string         { return "" }
+func (f *memFileStreamer) GetName() string       { return f.name }
+func (f *memFileStreamer) SetPath(path string)   { _ = path }
+func (f *memFileStreamer) SetRapidUpload(b bool) { f.rapidUpload = b }
+func (f *memFileStreamer) GetSize() int64        { return f.size }
+func (f *memFileStreamer) ModTime() time.Time    { return time.Time{} }
+func (f *memFileStreamer) CreateTime() time.Time { return time.Time{} }
+func (f *memFileStreamer) IsDir() bool           { return false }
+func (f *memFileStreamer) GetHash() utils.HashInfo { return utils.NewHashInfo(utils.SHA1, f.sha1Str) }
+func (f *memFileStreamer) GetPath() string       { return "" }
+func (f *memFileStreamer) GetMimetype() string   { return "application/octet-stream" }
+func (f *memFileStreamer) NeedStore() bool       { return true }
+func (f *memFileStreamer) IsForceStreamUpload() bool { return false }
+func (f *memFileStreamer) GetExist() model.Obj  { return nil }
+func (f *memFileStreamer) SetExist(model.Obj)   {}
+func (f *memFileStreamer) Add(io.Closer)         {}
+func (f *memFileStreamer) AddIfCloser(any)      {}
+func (f *memFileStreamer) CacheFullAndWriter(up *model.UpdateProgress, w io.Writer) (model.File, error) {
+	if w != nil {
+		w.Write(f.data)
+	}
+	return bytes.NewReader(f.data), nil
+}
+
+func (f *memFileStreamer) GetFile() model.File  { return nil }
+
+func (f *memFileStreamer) Read(p []byte) (n int, err error) {
+	if f.offset >= f.size {
+		return 0, io.EOF
+	}
+	remaining := f.size - f.offset
+	toRead := int64(len(p))
+	if toRead > remaining {
+		toRead = remaining
+	}
+	copy(p, f.data[f.offset:f.offset+toRead])
+	f.offset += toRead
+	return int(toRead), nil
+}
+
+func (f *memFileStreamer) Close() error { return nil }
+
+func (f *memFileStreamer) RangeRead(ra http_range.Range) (io.Reader, error) {
+	start := ra.Start
+	if start > f.size {
+		start = f.size
+	}
+	end := start + ra.Length
+	if end > f.size {
+		end = f.size
+	}
+	return io.NopCloser(strings.NewReader(string(f.data[start:end]))), nil
+}
+
+func newMemFileStreamer(name string, size int64, sha1Str string, data []byte) *memFileStreamer {
+	return &memFileStreamer{name: name, size: size, sha1Str: sha1Str, data: data}
+}
+
+// fileStreamer 读取本地文件进行上传
+type fileStreamer struct {
+	name         string
+	size         int64
+	sha1Str      string
+	file         *os.File
+	offset       int64
+	rapidUpload  bool
+}
+
+func (f *fileStreamer) GetID() string         { return "" }
+func (f *fileStreamer) GetName() string       { return f.name }
+func (f *fileStreamer) SetPath(path string)   { _ = path }
+func (f *fileStreamer) SetRapidUpload(b bool) { f.rapidUpload = b }
+func (f *fileStreamer) GetSize() int64       { return f.size }
+func (f *fileStreamer) ModTime() time.Time    { return time.Time{} }
+func (f *fileStreamer) CreateTime() time.Time { return time.Time{} }
+func (f *fileStreamer) IsDir() bool           { return false }
+func (f *fileStreamer) GetHash() utils.HashInfo { return utils.NewHashInfo(utils.SHA1, f.sha1Str) }
+func (f *fileStreamer) GetPath() string       { return "" }
+func (f *fileStreamer) GetMimetype() string   { return "application/octet-stream" }
+func (f *fileStreamer) NeedStore() bool       { return true }
+func (f *fileStreamer) IsForceStreamUpload() bool { return false }
+func (f *fileStreamer) GetExist() model.Obj   { return nil }
+func (f *fileStreamer) SetExist(model.Obj)    {}
+func (f *fileStreamer) Add(io.Closer)         {}
+func (f *fileStreamer) AddIfCloser(any)       {}
+func (f *fileStreamer) CacheFullAndWriter(up *model.UpdateProgress, w io.Writer) (model.File, error) {
+	f.file.Seek(0, io.SeekStart)
+	if w != nil {
+		io.Copy(w, f.file)
+		f.file.Seek(0, io.SeekStart)
+	}
+	return f.file, nil
+}
+
+func (f *fileStreamer) GetFile() model.File   { return nil }
+
+func (f *fileStreamer) Read(p []byte) (n int, err error) {
+	n, err = f.file.Read(p)
+	if n > 0 {
+		f.offset += int64(n)
+	}
+	return
+}
+
+func (f *fileStreamer) Close() error { return f.file.Close() }
+
+func (f *fileStreamer) RangeRead(ra http_range.Range) (io.Reader, error) {
+	_, err := f.file.Seek(ra.Start, io.SeekStart)
+	if err != nil {
+		return nil, err
+	}
+	return io.LimitReader(f.file, ra.Length), nil
+}
+
+func newFileStreamer(name string, size int64, sha1Str string, file *os.File) *fileStreamer {
+	return &fileStreamer{name: name, size: size, sha1Str: sha1Str, file: file}
 }
 
 type urlFileStreamer struct {

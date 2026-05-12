@@ -344,12 +344,11 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 	}
 
 	// 缓存逻辑
-	aliyunMountPath := aliyun.GetStorage().MountPath
-	cacheKey := aliyunMountPath + "/" + f.GetID()
+	cacheKey := srcPath + "/" + f.GetID()
 	hashInfo := f.GetHash()
 	sha1Str := hashInfo.GetHash(utils.SHA1)
 	if sha1Str != "" {
-		cacheKey = aliyunMountPath + "/" + sha1Str
+		cacheKey = srcPath + "/" + sha1Str
 	}
 
 	d.syncLoopMu.Lock()

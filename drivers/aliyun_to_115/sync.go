@@ -365,19 +365,39 @@ func (d *AliyunTo115) processSingleFile_http(ctx context.Context, srcPath string
 		return nil
 	}
 
-	// 3. 下载完整内容到内存
-	resp2, err := http.DefaultClient.Do(req.WithContext(ctx))
+	// 3. 下载完整内容到内存 (修复点：必须使用 GET 方法)
+	req2, _ := http.NewRequestWithContext(ctx, http.MethodGet, srcPath, nil)
+	// 如果原请求有自定义 Header (比如 Auth 等)，记得这里也要加上，例如:
+	// req2.Header = req.Header.Clone()
+
+	resp2, err := http.DefaultClient.Do(req2)
 	if err != nil {
-		fmt.Printf("[aliyun_to_115] 下载失败 [%s]: %v\n", srcPath, err)
+		fmt.Printf("[aliyun_to_115] 下载请求失败 [%s]: %v\n", srcPath, err)
 		stats.failed++
 		return err
 	}
 	defer resp2.Body.Close()
+
+	// 检查 GET 请求的响应码
+	if resp2.StatusCode != 200 {
+		fmt.Printf("[aliyun_to_115] 下载请求非200 [%s]: status=%d\n", srcPath, resp2.StatusCode)
+		stats.failed++
+		return fmt.Errorf("GET status %d", resp2.StatusCode)
+	}
+
 	data, err := io.ReadAll(io.LimitReader(resp2.Body, 100*1024*1024+1))
-	if err != nil || int64(len(data)) != fileSize {
-		fmt.Printf("[aliyun_to_115] 读取内容失败 [%s]: %v\n", srcPath, err)
+	if err != nil {
+		fmt.Printf("[aliyun_to_115] 读取内容发生异常 [%s]: %v\n", srcPath, err)
 		stats.failed++
 		return err
+	}
+
+	// 修复点：明确抛出长度不匹配的错误，避免返回 nil
+	if int64(len(data)) != fileSize {
+		errMismatch := fmt.Errorf("文件大小不匹配: 期望 %d, 实际读取 %d", fileSize, len(data))
+		fmt.Printf("[aliyun_to_115] 读取内容失败 [%s]: %v\n", srcPath, errMismatch)
+		stats.failed++
+		return errMismatch
 	}
 
 	// 4. 计算 SHA1

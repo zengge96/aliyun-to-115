@@ -219,11 +219,10 @@ func (d *AliyunTo115) doSync() {
 			}
 
 			// 处理这一行
-			d.processSingleFile(ctx, srcPath, dstPath, stats)
-			processedCount++
-
-			// 成功后追加到 strm_success.txt
-			os.WriteFile(strmSuccessFile, []byte(line+"\n"), 0644)
+			if err := d.processSingleFile(ctx, srcPath, dstPath, stats); err == nil {
+				// 成功后追加到 strm_success.txt
+				os.WriteFile(strmSuccessFile, []byte(line+"\n"), 0644)
+			}
 		}
 
 		// 第4步：同步完成，删除 strm_work.txt（strm_success.txt 已为空文件/已删）
@@ -342,27 +341,27 @@ func (d *AliyunTo115) getOrCreateDirID(ctx context.Context, fullPath string) (st
 	return dirObj.GetID(), nil
 }
 
-func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dstPath string, stats *syncStats) {
+func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dstPath string, stats *syncStats) error {
 	aliyun, _, err := op.GetStorageAndActualPath(srcPath)
 	if err != nil {
 		fmt.Printf("[aliyun_to_115] 获取驱动失败， fullPath=%s : %v\n", srcPath, err)
-		return
+		return err
 	}
 
 	f, err := fs.Get(ctx, srcPath, &fs.GetArgs{NoLog: true})
 	if err != nil {
 		fmt.Printf("[aliyun_to_115] 获取文件对象失败， fullPath=%s : %v\n", srcPath, err)
-		return
+		return err
 	}
 	if f.IsDir() {
-		return
+		return errors.New("is directory")
 	}
 
 	p115DirStr := d.GetStorage().MountPath + path.Dir(dstPath)
 	p115DirID, err := d.getOrCreateDirID(ctx, p115DirStr)
 	if err != nil {
 		fmt.Printf("[aliyun_to_115] 准备115目录失败 [%s]: %v\n", p115DirStr, err)
-		return
+		return err
 	}
 
 	// 缓存逻辑
@@ -378,7 +377,7 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 	if d.syncedCache[cacheKey] {
 		d.syncLoopMu.Unlock()
 		stats.skipped++
-		return
+		return nil
 	}
 	d.syncLoopMu.Unlock()
 
@@ -395,7 +394,7 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 
 	if err != nil || link == nil || link.URL == "" {
 		stats.noLink++
-		return
+		return errors.New("no link")
 	}
 
 	stream := newUrlFileStreamer(path.Base(dstPath), f.GetSize(), sha1Str, link.URL)
@@ -408,7 +407,7 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 	if uploadErr != nil || result == nil {
 		fmt.Printf("[aliyun_to_115] 上传失败: %s : %v\n", srcPath, uploadErr)
 		stats.failed++
-		return
+		return uploadErr
 	}
 
 	if stream.rapidUpload {
@@ -428,6 +427,7 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 	d.syncLoopMu.Unlock()
 	d.saveSyncedCache(cacheKey)
 	stats.synced++
+	return nil
 }
 
 func (d *AliyunTo115) _processSingleFile(ctx context.Context, aliyun aliyunStorage, f model.Obj, fullPath string, p115DirID string, stats *syncStats) {

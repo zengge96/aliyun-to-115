@@ -172,14 +172,20 @@ func (d *AliyunTo115) doSync() {
 				continue
 			}
 			parts := strings.SplitN(line, "#", 2)
-			if len(parts) != 2 {
+			if len(parts) == 2 {
+				srcRaw := strings.TrimSpace(parts[1])
+				dstRaw := strings.TrimSpace(parts[0])
+			} else if len(parts) == 1 {
+				srcRaw := strings.TrimSpace(parts[0])
+				dstRaw := strings.TrimSpace(parts[0])
+			} else {
 				db2.Exec("DELETE FROM strm_tasks WHERE id = ?", recID)
 				continue
 			}
-			dstRaw := strings.TrimSpace(parts[0])
+			
+			srcRaw = "/" + strings.TrimPrefix(srcRaw, "/")
 			dstRaw = "/" + strings.TrimPrefix(dstRaw, "/")
-			srcRaw := strings.TrimSpace(parts[1])
-
+			
 			// 解析真实 srcPath
 			srcPath := srcRaw
 			if strings.HasPrefix(srcRaw, "http://") || strings.HasPrefix(srcRaw, "https://") {

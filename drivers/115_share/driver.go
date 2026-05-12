@@ -79,7 +79,7 @@ func (d *Pan115Share) List(ctx context.Context, dir model.Obj, args model.ListAr
 	time.Sleep(500 * time.Millisecond)
 
 	files := make([]driver115.ShareFile, 0)
-	fileResp, err := d.client.GetShareSnap(d.ShareCode, d.ReceiveCode, dir.GetID(), driver115.QueryLimit(int(conf.Conf.Page_Size)))
+	fileResp, err := d.client.GetShareSnap(d.ShareCode, d.ReceiveCode, dir.GetID(), driver115.QueryLimit(d.Addition.PageSize))
 	if err != nil {
         	if errs.IsObjectNotFound(err) {
             		return nil, nil
@@ -93,7 +93,7 @@ func (d *Pan115Share) List(ctx context.Context, dir model.Obj, args model.ListAr
 		time.Sleep(500 * time.Millisecond)
 		fileResp, err := d.client.GetShareSnap(
 			d.ShareCode, d.ReceiveCode, dir.GetID(),
-			driver115.QueryLimit(int(conf.Conf.Page_Size)), driver115.QueryOffset(count),
+			driver115.QueryLimit(d.Addition.PageSize), driver115.QueryOffset(count),
 		)
 		if len(fileResp.Data.List) == 0 {
 			break

@@ -191,7 +191,6 @@ func (d *AliyunTo115) doSync() {
 				}
 			}
 
-			srcPath := "/" + strings.TrimPrefix(srcRaw, "/")
 			dstPath := "/" + strings.TrimPrefix(dstRaw, "/")
 
 			srcExt := filepath.Ext(srcPath)

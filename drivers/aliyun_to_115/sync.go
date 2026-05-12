@@ -197,7 +197,7 @@ func (d *AliyunTo115) doSync() {
 			srcExt := filepath.Ext(srcPath)
 			if srcExt != "" {
 				ext := filepath.Ext(dstPath)
-				if ext == "strm" {
+				if ext == ".strm" {
 					dstPath = strings.TrimSuffix(dstPath, ext) + srcExt
 				}
 			}

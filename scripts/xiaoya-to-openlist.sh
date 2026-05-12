@@ -115,7 +115,7 @@ check_and_install_deps() {
 }
 
 download_and_extract_sql() {
-    if [ "$CONST_XIAOYA_URL"x = "true"x ]; then
+    if [ "$CONST_XIAOYA_URL"x = x ]; then
         echo "未定义小雅资源包下载地址，使用本地文件！"
         return 0
     fi
@@ -152,7 +152,7 @@ download_and_extract_sql() {
 }
 
 download_and_extract_strm() {
-    if [ "$CONST_XIAOYA_STRM_URL"x = "true"x ]; then
+    if [ "$CONST_XIAOYA_STRM_URL"x = x ]; then
         echo "未定义strm包下载地址，使用本地文件！"
         return 0
     fi

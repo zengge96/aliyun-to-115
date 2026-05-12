@@ -184,32 +184,30 @@ func (d *AliyunTo115) doSync() {
 				continue
 			}
 
-			srcRaw = "/" + strings.TrimPrefix(srcRaw, "/")
-			dstRaw = "/" + strings.TrimPrefix(dstRaw, "/")
-
-			srcPath := srcRaw
 			if strings.HasPrefix(srcRaw, "http://xiaoya.host") || strings.HasPrefix(srcRaw, "https://xiaoya.host") {
 				if u, err := url.Parse(srcRaw); err == nil {
-					srcPath, _ = url.QueryUnescape(u.Path)
-					srcPath = strings.TrimPrefix(srcPath, "/d")
+					srcRaw, _ = url.QueryUnescape(u.Path)
+					srcRaw = strings.TrimPrefix(srcRaw, "/d")
 				}
 			}
 
-			dstPath := dstRaw
+			srcPath := "/" + strings.TrimPrefix(srcRaw, "/")
+			dstPath := "/" + strings.TrimPrefix(dstRaw, "/")
+
 			srcExt := filepath.Ext(srcPath)
 			if srcExt != "" {
-				ext := filepath.Ext(dstRaw)
+				ext := filepath.Ext(dstPath)
 				if ext == "strm" {
-					dstPath = strings.TrimSuffix(dstRaw, ext) + srcExt
+					dstPath = strings.TrimSuffix(dstPath, ext) + srcExt
 				}
 			}
 
 
-			if strings.HasPrefix(srcRaw, "http://") || strings.HasPrefix(srcRaw, "https://") {
+			if strings.HasPrefix(srcPath, "http://") || strings.HasPrefix(srcPath, "https://") {
 				if err := d.processSingleFile_http(ctx, srcPath, dstPath, stats); err == nil {
 					db2.Exec("DELETE FROM strm_tasks WHERE id = ?", recID)
 				}
-			} else if strings.HasPrefix(srcRaw, "file://") {
+			} else if strings.HasPrefix(srcPath, "file://") {
 				if err := d.processSingleFile_file(ctx, srcPath, dstPath, stats); err == nil {
 					db2.Exec("DELETE FROM strm_tasks WHERE id = ?", recID)
 				}

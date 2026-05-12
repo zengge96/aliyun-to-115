@@ -152,6 +152,7 @@ download_and_extract_sql() {
 }
 
 download_and_extract_strm() {
+    MOUNT_PATHS=()
     if [ "$CONST_XIAOYA_STRM_URL"x = x ]; then
         echo "未定义strm包下载地址，使用本地文件！"
         return 0
@@ -185,8 +186,6 @@ download_and_extract_strm() {
         echo -e "${RED}❌ 错误: 提取后的文件为空，请检查压缩包内容。${NC}"
         exit 1
     fi
-
-    MOUNT_PATHS=()
 }
 
 check_configs() {

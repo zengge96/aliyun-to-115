@@ -401,6 +401,15 @@ func (d *AliyunTo115) processSingleFile_http(ctx context.Context, srcPath string
 	// 4. 计算 SHA1
 	sha1Str := utils.HashData(utils.SHA1, data)
 
+	cacheKey := srcPath + "/" + sha1Str
+	d.syncLoopMu.Lock()
+	if d.syncedCache[cacheKey] {
+		d.syncLoopMu.Unlock()
+		stats.skipped++
+		return nil
+	}
+	d.syncLoopMu.Unlock()
+
 	// 5. 创建内存流
 	stream := newMemFileStreamer(path.Base(dstPath), fileSize, sha1Str, data)
 
@@ -427,6 +436,10 @@ func (d *AliyunTo115) processSingleFile_http(ctx context.Context, srcPath string
 		_ = d.p115Client.removeFrom115(ctx, result)
 	}
 
+	d.syncLoopMu.Lock()
+	d.syncedCache[cacheKey] = true
+	d.syncLoopMu.Unlock()
+	d.saveSyncedCache(cacheKey)
 	stats.synced++
 	return nil
 }
@@ -470,6 +483,15 @@ func (d *AliyunTo115) processSingleFile_file(ctx context.Context, srcPath string
 		return err
 	}
 
+	cacheKey := srcPath + "/" + sha1Str
+	d.syncLoopMu.Lock()
+	if d.syncedCache[cacheKey] {
+		d.syncLoopMu.Unlock()
+		stats.skipped++
+		return nil
+	}
+	d.syncLoopMu.Unlock()
+
 	// 重新打开用于上传
 	f2, err := os.Open(localPath)
 	if err != nil {
@@ -502,6 +524,10 @@ func (d *AliyunTo115) processSingleFile_file(ctx context.Context, srcPath string
 		_ = d.p115Client.removeFrom115(ctx, result)
 	}
 
+	d.syncLoopMu.Lock()
+	d.syncedCache[cacheKey] = true
+	d.syncLoopMu.Unlock()
+	d.saveSyncedCache(cacheKey)
 	stats.synced++
 	return nil
 }

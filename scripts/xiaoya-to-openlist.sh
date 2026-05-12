@@ -5,12 +5,14 @@ DB_PATH="./data/data.db"
 OPENLIST_BIN="./openlist"
 INPUT_SQL="./xiaoya.sql"
 INPUT_STRM="./strm.txt"
+INPUT_115_SARE_LIST="./115share_internal.txt"
 INIT_WAIT_TIME=12
 
 # 默认参数，可以在config.txt中覆盖定义，拷贝到config.txt中修改
 CONST_STRM_MODE="true"
 CONST_XIAOYA_URL="https://github.com/xiaoyaDev/data/raw/refs/heads/main/update.zip"
 CONST_XIAOYA_STRM_URL="https://github.com/xiaoyaDev/data/raw/refs/heads/main/strm.zip"
+CONST_XIAOYA_115_SHARE_URL="https://github.com/xiaoyaDev/data/raw/refs/heads/main/115share_list.txt"
 CONST_REFRESH_TOKEN_OPEN="<REFRESH_TOKEN_OPEN>" # 获取方式与openlist官方AliyundriveOpen驱动完全一致
 CONST_REFRESH_TOKEN="<REFRESH_TOKEN>"
 CONST_115_COOKIE="<115_COOKIE>"
@@ -261,6 +263,31 @@ init_db() {
     fi
 }
 
+download_and_import_115_share_list() {
+    echo -e ">>> 正在下载115分享列表..."
+    if [ "$CONST_XIAOYA_115_SHARE_URL"x != x ]; then
+        curl -sL -f "$CONST_XIAOYA_115_SHARE_URL" -o "$INPUT_115_SARE_LIST"
+    fi
+
+    if [ -s "$INPUT_115_SARE_LIST" ]; then
+        cat "$INPUT_115_SARE_LIST" | while read line;
+        do
+            if [ ! -z "$line" ]; then
+                mount_path=$(echo $line |cut -f1 -d" ")
+                share_id=$(echo $line |cut -f2 -d" ")
+                root_folder_id=$(echo $line |cut -f3 -d" ")
+                if [ "$root_folder_id" == "root" ]; then
+                    root_folder_id=""
+                fi
+                pwd=$(echo $line |cut -f4 -d" ")
+                sqlite3 "$DB_PATH" <<EOF
+INSERT INTO x_storages VALUES(NULL,"/🏷️我的115分享/$mount_path",0,'115 Share',86400,'','work','{"cookie":"$ESC_115_COOKIE","root_folder_id":"$root_folder_id","qrcode_token":"","qrcode_source":"linux","page_size":300,"limit_rate":2,"share_code":"$share_id","receive_code":"$pwd"}','','2022-09-29 20:14:52.313982364+00:00',0,0,0,'name','ASC','front',0,'302_redirect',0,'',0);
+EOF
+            fi
+        done
+    fi
+}
+
 # ================= 主流程 =================
 
 check_and_install_deps
@@ -381,6 +408,8 @@ SQL_RET=$?
 grep -i "^INSERT INTO x_setting_items" "$INPUT_SQL" | sqlite3 "$DB_PATH" 2>/dev/null
 
 rm -f "$TMP_SQL"
+
+download_and_import_115_share_list
 
 if [ $SQL_RET -eq 0 ]; then
     STORAGE_COUNT=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM x_storages;")

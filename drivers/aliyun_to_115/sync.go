@@ -10,9 +10,11 @@ import (
 	//"strconv"
 	"strings"
 	"time"
+	"database/sql"
 	"os"
 	"path"
 	"path/filepath"
+	_ "github.com/mattn/go-sqlite3"
 
 	_115 "github.com/OpenListTeam/OpenList/v4/drivers/115"
 	"github.com/OpenListTeam/OpenList/v4/drivers/aliyundrive_share2open"
@@ -99,81 +101,86 @@ func (d *AliyunTo115) doSync() {
 		configRootID = "0"
 	}
 
-	// ========== strm.txt 模式检测 ==========
+	// ========== strm.txt 模式检测（SQLite） ==========
 	cwd, _ := os.Getwd()
 	strmFile := filepath.Join(cwd, "strm.txt")
-	strmWorkFile := filepath.Join(cwd, "strm_work.txt")
-	strmSuccessFile := filepath.Join(cwd, "strm_success.txt")
+	strmDBFile := filepath.Join(cwd, "data", "work.db")
+
 	if _, err := os.Stat(strmFile); err == nil {
 		// strm.txt 存在，切换为文件同步模式
 
-		// 第1步：准备 strm_work.txt（首次运行从 strm.txt 复制）
-		if _, err := os.Stat(strmWorkFile); os.IsNotExist(err) {
-			data, err := os.ReadFile(strmFile)
-			if err != nil {
-				fmt.Printf("[aliyun_to_115] 读取 strm.txt 失败: %v\n", err)
-				return
-			}
-			fmt.Printf("[aliyun_to_115] strm.txt 首次运行，复制为 strm_work.txt\n")
-			os.WriteFile(strmWorkFile, data, 0644)
-		}
-
-		// 第2步：如果 strm_success.txt 存在，从 strm_work.txt 中过滤掉已成功的行
-		if successData, err := os.ReadFile(strmSuccessFile); err == nil {
-			successSet := make(map[string]bool)
-			for _, line := range strings.Split(strings.TrimSpace(string(successData)), "\n") {
-				line = strings.TrimSpace(line)
-				if line != "" {
-					successSet[line] = true
-				}
-			}
-
-			// 读取 strm_work.txt，过滤掉已成功的行
-			workData, err := os.ReadFile(strmWorkFile)
-			if err == nil {
-				var filteredLines []string
-				for _, line := range strings.Split(strings.TrimSpace(string(workData)), "\n") {
-					line = strings.TrimSpace(line)
-					if line == "" || strings.HasPrefix(line, "#") {
-						continue
-					}
-					if !successSet[line] {
-						filteredLines = append(filteredLines, line)
-					}
-				}
-				newWork := strings.Join(filteredLines, "\n") + "\n"
-				os.WriteFile(strmWorkFile, []byte(newWork), 0644)
-			}
-
-			// 删除 strm_success.txt
-			os.Remove(strmSuccessFile)
-			fmt.Printf("[aliyun_to_115] 过滤完成，已从 strm_work.txt 移除 %d 条已成功记录\n", len(successSet))
-		}
-
-		// 第3步：读取 strm_work.txt 并逐行处理
-		workData, err := os.ReadFile(strmWorkFile)
-		if err != nil {
-			fmt.Printf("[aliyun_to_115] 读取 strm_work.txt 失败: %v\n", err)
+		// 初始化 SQLite
+		if err := os.MkdirAll(filepath.Join(cwd, "data"), 0755); err != nil {
+			fmt.Printf("[aliyun_to_115] 创建data目录失败: %v\n", err)
 			return
 		}
 
-		lines := strings.Split(strings.TrimSpace(string(workData)), "\n")
-		_ = len(lines) // totalLines
+		db2, err := sql.Open("sqlite3", strmDBFile)
+		if err != nil {
+			fmt.Printf("[aliyun_to_115] 打开work.db失败: %v\n", err)
+			return
+		}
+		defer db2.Close()
 
-		for _, line := range lines {
+		// 建表
+		if _, err := db2.Exec(`CREATE TABLE IF NOT EXISTS strm_tasks (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			line TEXT NOT NULL UNIQUE
+		)`); err != nil {
+			fmt.Printf("[aliyun_to_115] 建表失败: %v\n", err)
+			return
+		}
+
+		// 检查是否需要从 strm.txt 初始化
+		var count int
+		row := db2.QueryRow("SELECT COUNT(*) FROM strm_tasks")
+		if row.Scan(&count); count == 0 {
+			// strm.txt -> 写入数据库
+			data, err := os.ReadFile(strmFile)
+			if err != nil {
+				fmt.Printf("[aliyun_to_115] 读取strm.txt失败: %v\n", err)
+				return
+			}
+			tx, _ := db2.Begin()
+			for _, l := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+				l = strings.TrimSpace(l)
+				if l == "" || strings.HasPrefix(l, "#") {
+					continue
+				}
+				tx.Exec("INSERT INTO strm_tasks(line) VALUES (?)", l)
+			}
+			tx.Commit()
+			fmt.Printf("[aliyun_to_115] 从strm.txt加载任务到数据库\n")
+		}
+
+		// 逐条处理：SELECT -> sync -> DELETE
+		for {
+			var recID int64
+			var line string
+			err := db2.QueryRow("SELECT id, line FROM strm_tasks ORDER BY id ASC LIMIT 1").Scan(&recID, &line)
+			if err == sql.ErrNoRows {
+				break // 全部完成
+			}
+			if err != nil {
+				fmt.Printf("[aliyun_to_115] 查询失败: %v\n", err)
+				break
+			}
+
 			line = strings.TrimSpace(line)
-			if line == "" || strings.HasPrefix(line, "#") {
+			if line == "" {
+				db2.Exec("DELETE FROM strm_tasks WHERE id = ?", recID)
 				continue
 			}
 			parts := strings.SplitN(line, "#", 2)
 			if len(parts) != 2 {
+				db2.Exec("DELETE FROM strm_tasks WHERE id = ?", recID)
 				continue
 			}
 			dstRaw := strings.TrimSpace(parts[0])
 			dstRaw = "/" + strings.TrimPrefix(dstRaw, "/")
 			srcRaw := strings.TrimSpace(parts[1])
 
-			// 解析出真实 srcPath：如果是 HTTP URL 则提取路径部分并做 URL decode
+			// 解析真实 srcPath
 			srcPath := srcRaw
 			if strings.HasPrefix(srcRaw, "http://") || strings.HasPrefix(srcRaw, "https://") {
 				if u, err := url.Parse(srcRaw); err == nil {
@@ -183,7 +190,6 @@ func (d *AliyunTo115) doSync() {
 			}
 
 			dstPath := dstRaw
-			// 扩展名替换
 			srcExt := filepath.Ext(srcPath)
 			if srcExt != "" {
 				ext := filepath.Ext(dstRaw)
@@ -193,16 +199,7 @@ func (d *AliyunTo115) doSync() {
 			}
 
 			if err := d.processSingleFile(ctx, srcPath, dstPath, stats); err == nil {
-				f, err := os.OpenFile(strmSuccessFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-				if err != nil {
-					fmt.Printf("无法打开日志文件: %v", err)
-				} else {
-					_, err = f.WriteString(line + "\n")
-					if err != nil {
-						fmt.Printf("写入日志失败: %v", err)
-					}
-					f.Close()
-				}
+				db2.Exec("DELETE FROM strm_tasks WHERE id = ?", recID)
 			}
 		}
 
@@ -210,6 +207,7 @@ func (d *AliyunTo115) doSync() {
 			stats.total, stats.skipped, stats.rapid, stats.normal, stats.failed)
 		return
 	}
+
 
 	// ========== 原生遍历驱动模式 ==========
 	for _, aliyun := range aliyunStorages {

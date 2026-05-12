@@ -195,11 +195,11 @@ func (d *AliyunTo115) doSync() {
 			if err := d.processSingleFile(ctx, srcPath, dstPath, stats); err == nil {
 				f, err := os.OpenFile(strmSuccessFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 				if err != nil {
-					log.Printf("无法打开日志文件: %v", err)
+					fmt.Printf("无法打开日志文件: %v", err)
 				} else {
 					_, err = f.WriteString(line + "\n")
 					if err != nil {
-						log.Printf("写入日志失败: %v", err)
+						fmt.Printf("写入日志失败: %v", err)
 					}
 					f.Close()
 				}

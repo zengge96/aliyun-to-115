@@ -367,8 +367,6 @@ func (d *AliyunTo115) processSingleFile_http(ctx context.Context, srcPath string
 
 	// 3. 下载完整内容到内存 (修复点：必须使用 GET 方法)
 	req2, _ := http.NewRequestWithContext(ctx, http.MethodGet, srcPath, nil)
-	// 如果原请求有自定义 Header (比如 Auth 等)，记得这里也要加上，例如:
-	// req2.Header = req.Header.Clone()
 
 	resp2, err := http.DefaultClient.Do(req2)
 	if err != nil {

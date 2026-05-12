@@ -4,10 +4,13 @@
 DB_PATH="./data/data.db"
 OPENLIST_BIN="./openlist"
 INPUT_SQL="./xiaoya.sql"
+INPUT_STRM="./strm.txt"
 INIT_WAIT_TIME=12
 
 # 默认参数，可以在config.txt中覆盖定义，拷贝到config.txt中修改
+CONST_STRM_MODE="true"
 CONST_XIAOYA_URL="https://github.com/xiaoyaDev/data/raw/refs/heads/main/update.zip"
+CONST_XIAOYA_STRM_URL="https://github.com/xiaoyaDev/data/raw/refs/heads/main/strm.zip"
 CONST_REFRESH_TOKEN_OPEN="<REFRESH_TOKEN_OPEN>" # 获取方式与openlist官方AliyundriveOpen驱动完全一致
 CONST_REFRESH_TOKEN="<REFRESH_TOKEN>"
 CONST_115_COOKIE="<115_COOKIE>"
@@ -112,6 +115,11 @@ check_and_install_deps() {
 }
 
 download_and_extract_sql() {
+    if [ "$CONST_XIAOYA_URL"x = "true"x ]; then
+        echo "未定义小雅资源包下载地址，使用本地文件！"
+        return 0
+    fi
+
     # 定义颜色
     local RED='\033[0;31m'
     local GREEN='\033[0;32m'
@@ -141,6 +149,44 @@ download_and_extract_sql() {
         echo -e "${RED}❌ 错误: 提取后的文件为空，请检查压缩包内容。${NC}"
         exit 1
     fi
+}
+
+download_and_extract_strm() {
+    if [ "$CONST_XIAOYA_STRM_URL"x = "true"x ]; then
+        echo "未定义strm包下载地址，使用本地文件！"
+        return 0
+    fi
+    # 定义颜色
+    local RED='\033[0;31m'
+    local GREEN='\033[0;32m'
+    local YELLOW='\033[1;33m'
+    local NC='\033[0m'
+
+    local TEMP_ZIP="./strm.zip"
+
+    local TARGET_DIR=$(dirname "$INPUT_STRM")
+    mkdir -p "$TARGET_DIR"
+
+    echo -e ">>> 正在下载strm包...${NC}"
+    curl -sL -f "$CONST_XIAOYA_STRM_URL" -o "$TEMP_ZIP" || {
+        echo -e "${RED}❌ 错误: 下载失败。${NC}"
+        exit 1
+    }
+
+    unzip -p "$TEMP_ZIP" "*.txt" > "$INPUT_STRM" || {
+        echo -e "${RED}❌ 错误: 解压失败或压缩包内无 .txt 文件。${NC}"
+        rm -f "$TEMP_ZIP"
+        exit 1
+    }
+
+    rm -f "$TEMP_ZIP"
+
+    if [ ! -s "$INPUT_STRM" ]; then
+        echo -e "${RED}❌ 错误: 提取后的文件为空，请检查压缩包内容。${NC}"
+        exit 1
+    fi
+
+    MOUNT_PATHS=()
 }
 
 check_configs() {
@@ -223,6 +269,11 @@ load_external_config
 check_configs
 
 download_and_extract_sql
+
+if [ "$CONST_STRM_MODE"x = "true"x ]; then
+    echo "strm模式已开启"
+    download_and_extract_strm
+fi
 
 if [ ! -f "$INPUT_SQL" ]; then
     echo "!!! 错误: 找不到文件 $INPUT_SQL"

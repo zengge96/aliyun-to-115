@@ -159,7 +159,6 @@ func (d *AliyunTo115) doSync() {
 
 		lines := strings.Split(strings.TrimSpace(string(workData)), "\n")
 		_ = len(lines) // totalLines
-		processedCount := 0
 
 		for _, line := range lines {
 			line = strings.TrimSpace(line)
@@ -193,17 +192,18 @@ func (d *AliyunTo115) doSync() {
 				}
 			}
 
-			// 处理这一行
 			if err := d.processSingleFile(ctx, srcPath, dstPath, stats); err == nil {
-				// 成功后追加到 strm_success.txt
-				os.WriteFile(strmSuccessFile, []byte(line+"\n"), 0644)
+				f, err := os.OpenFile(strmSuccessFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+				if err != nil {
+					log.Printf("无法打开日志文件: %v", err)
+				} else {
+					_, err = f.WriteString(line + "\n")
+					if err != nil {
+						log.Printf("写入日志失败: %v", err)
+					}
+					f.Close()
+				}
 			}
-		}
-
-		// 第4步：同步完成，删除 strm_work.txt（strm_success.txt 已为空文件/已删）
-		if processedCount > 0 {
-			os.Remove(strmWorkFile)
-			fmt.Printf("[aliyun_to_115] strm_work.txt 已清理\n")
 		}
 
 		fmt.Printf("[aliyun_to_115] ===== strm模式同步完成: 发现%v / 跳过%v / 秒传%v / 正常%v / 失败%v =====\n",

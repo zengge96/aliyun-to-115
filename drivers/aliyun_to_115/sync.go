@@ -77,6 +77,50 @@ type syncStats struct {
 	normal  int64
 }
 
+func initDB(dbPath string) (*sql.DB, error) {
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
+		return nil, err
+	}
+
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		return nil, err
+	}
+
+	createTableSQL := `CREATE TABLE IF NOT EXISTS sync_state (
+		key TEXT PRIMARY KEY,
+		value TEXT
+	);`
+	_, err = db.Exec(createTableSQL)
+	return db, err
+}
+
+func getBreakpoint(db *sql.DB) string {
+	var val string
+	err := db.QueryRow("SELECT value FROM sync_state WHERE key = 'breakpoint'").Scan(&val)
+	if err != nil {
+		if err != sql.ErrNoRows {
+			log.Printf("读取断点失败: %v", err)
+		}
+		return ""
+	}
+	return val
+}
+
+func setBreakpoint(db *sql.DB, path string) {
+	_, err := db.Exec("REPLACE INTO sync_state (key, value) VALUES ('breakpoint', ?)", path)
+	if err != nil {
+		log.Printf("更新断点失败 [%s]: %v", path, err)
+	}
+}
+
+func clearBreakpoint(db *sql.DB) {
+	_, err := db.Exec("DELETE FROM sync_state WHERE key = 'breakpoint'")
+	if err != nil {
+		log.Printf("清空断点失败: %v", err)
+	}
+}
+
 func (d *AliyunTo115) doSync() {
 	d.syncLoopMu.Lock()
 	if d.syncRunning {
@@ -236,8 +280,21 @@ func (d *AliyunTo115) doSync() {
 		return
 	}
 
+	db, err := initDB("./data/work.db")
+	if err != nil {
+		log.Fatalf("无法初始化数据库: %v", err)
+	}
+	defer db.Close()
 
-	// ========== 原生遍历驱动模式 ==========
+	breakpointPath := getBreakpoint(db)
+	fullScan := false
+	if breakpointPath == "" {
+		fmt.Println("[aliyun_to_115] 未发现断点记录，开始全新全量扫描...")
+		fullScan = true
+	} else {
+		fmt.Printf("[aliyun_to_115] 读取到断点: %s，准备恢复扫描...\n", breakpointPath)
+	}
+
 	for _, aliyun := range aliyunStorages {
 		storage := aliyun.GetStorage()
 		mountPath := "/"
@@ -248,17 +305,24 @@ func (d *AliyunTo115) doSync() {
 		fmt.Printf("[aliyun_to_115] 正在处理阿里存储: %s\n", mountPath)
 
 		aliRootID := aliyun.GetRootId()
-		err := d.walkAndSync(ctx, aliyun, mountPath + "/", aliRootID, stats)
+		
+		err := d.walkAndSync(ctx, aliyun, mountPath, aliRootID, stats, breakpointPath, &fullScan)
 		if err != nil {
 			fmt.Printf("[aliyun_to_115] walk error for %s: %v\n", mountPath, err)
 		}
 	}
 
+	clearBreakpoint(db)
+
 	fmt.Printf("[aliyun_to_115] ===== 同步完成: 跳过%v / 秒传%v / 正常%v / 失败%v =====\n",
 		stats.skipped, stats.rapid, stats.normal, stats.failed)
 }
 
-func (d *AliyunTo115) walkAndSync(ctx context.Context, aliyun aliyunStorage, currentPath, aliParentID string, stats *syncStats) error {
+func (d *AliyunTo115) walkAndSync(ctx context.Context, aliyun aliyunStorage, currentPath, aliParentID string, stats *syncStats, breakpointPath string, fullScan *bool, db *sql.DB) error {
+	if !strings.HasSuffix(currentPath, "/") {
+		currentPath += "/"
+	}
+
 	files, err := aliyun.List(ctx, &model.Object{ID: aliParentID}, model.ListArgs{})
 	if err != nil {
 		return err
@@ -267,11 +331,35 @@ func (d *AliyunTo115) walkAndSync(ctx context.Context, aliyun aliyunStorage, cur
 	for _, f := range files {
 		if f.IsDir() {
 			subPath := currentPath + f.GetName() + "/"
-			_ = d.walkAndSync(ctx, aliyun, subPath, f.GetID(), stats)
+
+			if !(*fullScan) {
+				if !strings.HasPrefix(breakpointPath, subPath) {
+					continue 
+				}
+			}
+
+			_ = d.walkAndSync(ctx, aliyun, subPath, f.GetID(), stats, breakpointPath, fullScan, db)
+			
 		} else {
-			stats.total++
 			fullPath := currentPath + f.GetName()
-			d.processSingleFile(ctx, fullPath, fullPath, stats)
+
+			if !(*fullScan) {
+				if fullPath == breakpointPath {
+					fmt.Printf("\n>>> 精确匹配到断点文件: %s <<<\n", fullPath)
+					fmt.Println(">>> 状态已切换，开始从此处恢复同步任务...")
+					time.Sleep(1 * time.Second)
+					*fullScan = true
+				} else {
+					continue 
+				}
+			}
+
+			if *fullScan {
+				setBreakpoint(db, fullPath) 
+
+				stats.total++
+				d.processSingleFile(ctx, fullPath, fullPath, stats)
+			}
 		}
 	}
 	return nil

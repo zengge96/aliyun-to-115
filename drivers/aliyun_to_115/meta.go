@@ -14,6 +14,7 @@ type aliyunTo115Addition struct {
 	LimitRate      float64      `json:"limit_rate" type:"float" default:"2" help:"limit all api request rate ([limit]r/1s)"`
 	DeleteAfterSync bool        `json:"delete_after_sync" type:"bool" default:"false" help:"delete file from 115 after sync (SHA1 will still be registered)"`
 	driver.RootID
+	RunOnce       bool         `json:"run_once" type:"bool" default:"false" help:"sync once and exit"`
 }
 
 type Addition = aliyunTo115Addition

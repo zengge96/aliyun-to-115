@@ -12,6 +12,7 @@ import (
 	"time"
 	"database/sql"
 	"os"
+	"syscall"
 	"sort"
 	"bytes"
 	"path"
@@ -120,6 +121,11 @@ func clearBreakpoint(db *sql.DB) {
 	if err != nil {
 		fmt.Printf("清空断点失败: %v", err)
 	}
+}
+
+func selfTerminate() {
+	p, _ := os.FindProcess(os.Getpid())
+	p.Signal(syscall.SIGTERM)
 }
 
 func (d *AliyunTo115) doSync() {
@@ -278,6 +284,9 @@ func (d *AliyunTo115) doSync() {
 
 		fmt.Printf("[aliyun_to_115] ===== 同步完成: 跳过%v / 秒传%v / 正常%v / 失败%v =====\n",
 			stats.skipped, stats.rapid, stats.normal, stats.failed)
+		if d.RunOnce {
+			selfTerminate()
+		}
 		return
 	}
 
@@ -331,6 +340,11 @@ func (d *AliyunTo115) doSync() {
 
 	fmt.Printf("[aliyun_to_115] ===== 同步完成: 跳过%v / 秒传%v / 正常%v / 失败%v =====\n",
 		stats.skipped, stats.rapid, stats.normal, stats.failed)
+
+	if d.RunOnce {
+		selfTerminate()
+	}
+	return
 }
 
 func (d *AliyunTo115) walkAndSync(ctx context.Context, aliyun aliyunStorage, currentPath, aliParentID string, stats *syncStats, breakpointPath string, fullScan *bool, db *sql.DB) error {

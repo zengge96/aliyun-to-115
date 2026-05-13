@@ -218,7 +218,7 @@ func (d *AliyunTo115) doSync() {
 			}	
 		}
 
-		fmt.Printf("[aliyun_to_115] ===== strm模式同步完成: 跳过%v / 秒传%v / 正常%v / 失败%v =====\n",
+		fmt.Printf("[aliyun_to_115] ===== 同步完成: 跳过%v / 秒传%v / 正常%v / 失败%v =====\n",
 			stats.skipped, stats.rapid, stats.normal, stats.failed)
 		return
 	}
@@ -241,8 +241,8 @@ func (d *AliyunTo115) doSync() {
 		}
 	}
 
-	fmt.Printf("[aliyun_to_115] ===== 同步完成: 发现%v / 跳过%v / 秒传%v / 正常%v / 失败%v =====\n",
-		stats.total, stats.skipped, stats.rapid, stats.normal, stats.failed)
+	fmt.Printf("[aliyun_to_115] ===== 同步完成: 跳过%v / 秒传%v / 正常%v / 失败%v =====\n",
+		stats.skipped, stats.rapid, stats.normal, stats.failed)
 }
 
 func (d *AliyunTo115) walkAndSync(ctx context.Context, aliyun aliyunStorage, currentPath, aliParentID string, stats *syncStats) error {

@@ -591,6 +591,7 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 	// 规避115 Share List的Size错误
 	fileSize :=  f.GetSize()
 	fmt.Printf("fileSize1:%d\n", fileSize)
+	fmt.Printf("[DEBUG] aliyun interface type: %T\n", aliyun)
 	if _, ok := aliyun.(*_115_share.Pan115Share); ok {
 		req, _ := http.NewRequestWithContext(ctx, http.MethodHead, link.URL, nil)
 		resp, err := http.DefaultClient.Do(req)

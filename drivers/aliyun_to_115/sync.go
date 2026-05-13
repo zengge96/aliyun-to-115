@@ -12,6 +12,8 @@ import (
 	"time"
 	"database/sql"
 	"os"
+	"os/signal"
+	"sync"
 	"syscall"
 	"sort"
 	"bytes"
@@ -68,6 +70,11 @@ func (d *AliyunTo115) doSyncLoop() {
 		d.doSync()
 	}
 }
+
+var (
+	currentStats   *syncStats
+	currentStatsMu sync.Mutex
+)
 
 type syncStats struct {
 	total   int64
@@ -146,6 +153,23 @@ func (d *AliyunTo115) doSync() {
 	ctx := context.Background()
 	aliyunStorages := d.discoverAliyunStorages()
 	stats := &syncStats{}
+	currentStatsMu.Lock()
+	currentStats = stats
+	currentStatsMu.Unlock()
+
+	// 注册信号处理，Ctrl+C 时打印进度
+	go func() {
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+		<-sigCh
+		currentStatsMu.Lock()
+		defer currentStatsMu.Unlock()
+		if currentStats != nil {
+			fmt.Printf("\n[aliyun_to_115] ===== 用户中断: 跳过%v / 秒传%v / 正常%v / 失败%v =====\n",
+				currentStats.skipped, currentStats.rapid, currentStats.normal, currentStats.failed)
+		}
+		os.Exit(0)
+	}()
 
 	// 用户配置的目标 115 根目录
 	configRootID := d.RootFolderID

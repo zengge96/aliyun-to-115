@@ -587,7 +587,28 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 		return errors.New("no link")
 	}
 
-	stream := newUrlFileStreamer(path.Base(dstPath), f.GetSize(), sha1Str, link.URL)
+	// 规避115 Share List的Size错误
+	fileSize :=  f.GetSize()
+	if driver, ok := aliyun.(*_115_share.Pan115Share); ok {
+		req, _ := http.NewRequestWithContext(ctx, http.MethodHead, link.URL, nil)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			fmt.Printf("[aliyun_to_115] 115直链HEAD请求失败 [%s]: %v\n", srcPath, err)
+			return err
+		}
+		resp.Body.Close()
+		if resp.StatusCode != 200 {
+			fmt.Printf("[aliyun_to_115] 115直链HEAD请求非200 [%s]: status=%d\n", srcPath, resp.StatusCode)
+			return fmt.Errorf("HEAD status %d", resp.StatusCode)
+		}
+		fileSize = resp.ContentLength
+		if fileSize <= 0 {
+			fmt.Printf("[aliyun_to_115] 115直链无法获取文件大小 [%s]\n", srcPath)
+			return fmt.Errorf("content-length invalid")
+		}
+	}
+
+	stream = newUrlFileStreamer(path.Base(dstPath), fileSize, sha1Str, link.URL)
 	start := time.Now()
 	
 	// 使用动态获取到的 p115DirID 上传

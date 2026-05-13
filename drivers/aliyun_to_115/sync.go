@@ -551,6 +551,12 @@ func (d *AliyunTo115) processSingleFile_http(ctx context.Context, srcPath string
 	if uploadErr != nil || result == nil {
 		fmt.Printf("[aliyun_to_115] 上传失败: %s : %v\n", srcPath, uploadErr)
 		stats.failed++
+		// 写入失败记录
+		failedLine := fmt.Sprintf("%s#%s\n", srcPath, dstPath)
+		if f, err := os.OpenFile("./failed.txt", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+			f.WriteString(failedLine)
+			f.Close()
+		}
 		return uploadErr
 	}
 
@@ -649,6 +655,12 @@ func (d *AliyunTo115) processSingleFile_file(ctx context.Context, srcPath string
 	if uploadErr != nil || result == nil {
 		fmt.Printf("[aliyun_to_115] 上传失败: %s : %v\n", srcPath, uploadErr)
 		stats.failed++
+		// 写入失败记录
+		failedLine := fmt.Sprintf("%s#%s\n", srcPath, dstPath)
+		if f, err := os.OpenFile("./failed.txt", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+			f.WriteString(failedLine)
+			f.Close()
+		}
 		return uploadErr
 	}
 
@@ -767,6 +779,12 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 	if uploadErr != nil || result == nil {
 		fmt.Printf("[aliyun_to_115] 上传失败: %s : %v\n", srcPath, uploadErr)
 		stats.failed++
+		// 写入失败记录
+		failedLine := fmt.Sprintf("%s#%s\n", srcPath, dstPath)
+		if f, err := os.OpenFile("./failed.txt", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+			f.WriteString(failedLine)
+			f.Close()
+		}
 		return uploadErr
 	}
 

@@ -9,7 +9,7 @@ INPUT_115_SHARE_LIST="./115share_internal.txt"
 INIT_WAIT_TIME=12
 
 # 默认参数，可以在config.txt中覆盖定义，拷贝到config.txt中修改
-CONST_STRM_MODE="true"
+CONST_STRM_MODE="false"
 CONST_XIAOYA_URL="https://github.com/xiaoyaDev/data/raw/refs/heads/main/update.zip"
 CONST_XIAOYA_STRM_URL="https://github.com/xiaoyaDev/data/raw/refs/heads/main/strm.zip"
 CONST_XIAOYA_115_SHARE_URL="https://github.com/xiaoyaDev/data/raw/refs/heads/main/115share_list.txt"

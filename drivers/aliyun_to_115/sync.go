@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"io"
 	"net/http"
 	"net/url"
@@ -283,7 +284,7 @@ func (d *AliyunTo115) doSync() {
 	// ========== 驱动遍历模式） ==========
 	db, err := initDB("./data/work.db")
 	if err != nil {
-		fmt.Fatalf("无法初始化数据库: %v", err)
+		log.Fatalf("无法初始化数据库: %v", err)
 	}
 	defer db.Close()
 
@@ -307,7 +308,7 @@ func (d *AliyunTo115) doSync() {
 
 		aliRootID := aliyun.GetRootId()
 		
-		err := d.walkAndSync(ctx, aliyun, mountPath, aliRootID, stats, breakpointPath, &fullScan)
+		err := d.walkAndSync(ctx, aliyun, mountPath, aliRootID, stats, breakpointPath, &fullScan, db)
 		if err != nil {
 			fmt.Printf("[aliyun_to_115] walk error for %s: %v\n", mountPath, err)
 		}

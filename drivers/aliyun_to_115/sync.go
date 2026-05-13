@@ -12,6 +12,7 @@ import (
 	"time"
 	"database/sql"
 	"os"
+	"sort"
 	"bytes"
 	"path"
 	"path/filepath"
@@ -296,6 +297,18 @@ func (d *AliyunTo115) doSync() {
 	} else {
 		fmt.Printf("[aliyun_to_115] 读取到断点: %s，准备恢复扫描...\n", breakpointPath)
 	}
+
+	sort.Slice(aliyunStorages, func(i, j int) bool {
+		mi := ""
+		mj := ""
+		if aliyunStorages[i].GetStorage() != nil {
+			mi = aliyunStorages[i].GetStorage().MountPath
+		}
+		if aliyunStorages[j].GetStorage() != nil {
+			mj = aliyunStorages[j].GetStorage().MountPath
+		}
+		return mi < mj
+	})
 
 	for _, aliyun := range aliyunStorages {
 		storage := aliyun.GetStorage()

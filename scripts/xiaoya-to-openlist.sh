@@ -377,7 +377,6 @@ WHERE c3 = '115 Share' AND json_valid(c6) = 1;
 UPDATE temp_storages 
 SET 
     c6 = json_set(c6, 
-        '$.paths', json_extract(c6, '$.paths')
         '$.provider_pass_through', json('true')
     )
 WHERE c3 = 'Alias' AND json_valid(c6) = 1 AND json_extract(c6, '$.paths') IS NOT NULL;

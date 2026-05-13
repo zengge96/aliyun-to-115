@@ -202,20 +202,33 @@ func (d *AliyunTo115) doSync() {
 				}
 			}
 
-
+			fail := true
 			if strings.HasPrefix(srcPath, "http://") || strings.HasPrefix(srcPath, "https://") {
 				if err := d.processSingleFile_http(ctx, srcPath, dstPath, stats); err == nil {
-					db2.Exec("DELETE FROM strm_tasks WHERE id = ?", recID)
+					fail = false
 				}
 			} else if strings.HasPrefix(srcPath, "file://") {
 				if err := d.processSingleFile_file(ctx, srcPath, dstPath, stats); err == nil {
-					db2.Exec("DELETE FROM strm_tasks WHERE id = ?", recID)
+					fail = false
 				}
 			} else {
 				if err := d.processSingleFile(ctx, srcPath, dstPath, stats); err == nil {
-					db2.Exec("DELETE FROM strm_tasks WHERE id = ?", recID)
+					fail = false
 				}
-			}	
+			}
+			
+			if fail {
+				tx, err := db2.Begin()
+				if err == nil {
+					_, err = tx.Exec("INSERT INTO strm_tasks (line) VALUES (?)", line)
+					if err == nil {
+						tx.Exec("DELETE FROM strm_tasks WHERE id = ?", recID)
+					}
+					tx.Commit()
+				}
+			} else {
+				db2.Exec("DELETE FROM strm_tasks WHERE id = ?", recID)
+			}
 		}
 
 		fmt.Printf("[aliyun_to_115] ===== 同步完成: 跳过%v / 秒传%v / 正常%v / 失败%v =====\n",

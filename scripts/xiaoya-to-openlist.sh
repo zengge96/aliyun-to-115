@@ -276,6 +276,24 @@ download_and_import_115_share_list() {
             [[ -z "$line" || "$line" =~ ^# ]] && continue
             
             mount_path=$(echo "$line" | awk '{print $1}')
+            
+            # 根据 MOUNT_PATHS 进行过滤
+            if [ ${#MOUNT_PATHS[@]} -gt 0 ]; then
+                local keep=0
+                local full_path="/🏷️我的115分享/$mount_path"
+                for p in "${MOUNT_PATHS[@]}"; do
+                    # 匹配逻辑：完整的挂载路径是否以配置的过滤路径开头
+                    if [[ "$full_path" == "$p"* ]]; then
+                        keep=1
+                        break
+                    fi
+                done
+                # 如果没有匹配任何一个设定挂载路径，则跳过
+                if [ $keep -eq 0 ]; then
+                    continue
+                fi
+            fi
+
             share_id=$(echo "$line" | awk '{print $2}')
             root_folder_id=$(echo "$line" | awk '{print $3}')
             share_pwd=$(echo "$line" | awk '{print $4}')

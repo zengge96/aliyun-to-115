@@ -216,6 +216,8 @@ func (d *Pan115) Put(ctx context.Context, dstDir model.Obj, stream model.FileStr
 		u.SetRapidUpload(false)
 	}
 
+	fmt.Printf("[aliyun_to_115] 秒传失败，走普通上传 [%s], 文件大小：%d\n", stream.GetName(), stream.GetSize())
+
 	var uploadResult *UploadResult
 	// 闪传失败，上传
 	if stream.GetSize() <= 10*utils.MB { // 文件大小小于10MB，改用普通模式上传

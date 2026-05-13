@@ -590,6 +590,7 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 
 	// 规避115 Share List的Size错误
 	fileSize :=  f.GetSize()
+	fmt.Printf("fileSize1:%d\n", fileSize)
 	if _, ok := aliyun.(*_115_share.Pan115Share); ok {
 		req, _ := http.NewRequestWithContext(ctx, http.MethodHead, link.URL, nil)
 		resp, err := http.DefaultClient.Do(req)
@@ -603,6 +604,7 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 			return fmt.Errorf("HEAD status %d", resp.StatusCode)
 		}
 		fileSize = resp.ContentLength
+		fmt.Printf("fileSize2:%d\n", fileSize)
 		if fileSize <= 0 {
 			fmt.Printf("[aliyun_to_115] 115直链无法获取文件大小 [%s]\n", srcPath)
 			return fmt.Errorf("content-length invalid")

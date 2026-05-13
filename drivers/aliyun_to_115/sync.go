@@ -588,6 +588,7 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 	}
 
 	// 规避115 Share List的Size错误
+	fileSize := f.GetSize()
 	provider, _ := model.GetProvider(f)
 	if provider == "115 Share" {
 		req, _ := http.NewRequestWithContext(ctx, http.MethodHead, link.URL, nil)

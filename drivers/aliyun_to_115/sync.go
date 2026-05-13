@@ -100,7 +100,7 @@ func getBreakpoint(db *sql.DB) string {
 	err := db.QueryRow("SELECT value FROM sync_state WHERE key = 'breakpoint'").Scan(&val)
 	if err != nil {
 		if err != sql.ErrNoRows {
-			log.Printf("读取断点失败: %v", err)
+			fmt.Printf("读取断点失败: %v", err)
 		}
 		return ""
 	}
@@ -110,14 +110,14 @@ func getBreakpoint(db *sql.DB) string {
 func setBreakpoint(db *sql.DB, path string) {
 	_, err := db.Exec("REPLACE INTO sync_state (key, value) VALUES ('breakpoint', ?)", path)
 	if err != nil {
-		log.Printf("更新断点失败 [%s]: %v", path, err)
+		fmt.Printf("更新断点失败 [%s]: %v", path, err)
 	}
 }
 
 func clearBreakpoint(db *sql.DB) {
 	_, err := db.Exec("DELETE FROM sync_state WHERE key = 'breakpoint'")
 	if err != nil {
-		log.Printf("清空断点失败: %v", err)
+		fmt.Printf("清空断点失败: %v", err)
 	}
 }
 
@@ -283,7 +283,7 @@ func (d *AliyunTo115) doSync() {
 	// ========== 驱动遍历模式） ==========
 	db, err := initDB("./data/work.db")
 	if err != nil {
-		log.Fatalf("无法初始化数据库: %v", err)
+		fmt.Fatalf("无法初始化数据库: %v", err)
 	}
 	defer db.Close()
 

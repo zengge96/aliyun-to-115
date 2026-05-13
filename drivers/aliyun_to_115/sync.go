@@ -533,9 +533,19 @@ func (d *AliyunTo115) processSingleFile_http(ctx context.Context, srcPath string
 	// 5. 创建内存流
 	stream := newMemFileStreamer(path.Base(dstPath), fileSize, sha1Str, data)
 
-	// 6. 上传
+	// 6. 上传（重试3次）
+	var result model.Obj
+	var uploadErr error
 	start := time.Now()
-	result, uploadErr := d.p115Client.uploadTo115(ctx, stream, p115DirID)
+	for attempt := 1; attempt <= 3; attempt++ {
+		result, uploadErr = d.p115Client.uploadTo115(ctx, stream, p115DirID)
+		if uploadErr == nil && result != nil {
+			break
+		}
+		if attempt < 3 {
+			time.Sleep(1 * time.Second)
+		}
+	}
 	elapsed := time.Since(start)
 
 	if uploadErr != nil || result == nil {
@@ -622,8 +632,18 @@ func (d *AliyunTo115) processSingleFile_file(ctx context.Context, srcPath string
 
 	stream := newFileStreamer(path.Base(dstPath), fileSize, sha1Str, f2)
 
+	var result model.Obj
+	var uploadErr error
 	start := time.Now()
-	result, uploadErr := d.p115Client.uploadTo115(ctx, stream, p115DirID)
+	for attempt := 1; attempt <= 3; attempt++ {
+		result, uploadErr = d.p115Client.uploadTo115(ctx, stream, p115DirID)
+		if uploadErr == nil && result != nil {
+			break
+		}
+		if attempt < 3 {
+			time.Sleep(1 * time.Second)
+		}
+	}
 	elapsed := time.Since(start)
 
 	if uploadErr != nil || result == nil {
@@ -730,10 +750,18 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 	}
 
 	stream := newUrlFileStreamer(path.Base(dstPath), fileSize, sha1Str, link.URL)
+	var result model.Obj
+	var uploadErr error
 	start := time.Now()
-	
-	// 使用动态获取到的 p115DirID 上传
-	result, uploadErr := d.p115Client.uploadTo115(ctx, stream, p115DirID)
+	for attempt := 1; attempt <= 3; attempt++ {
+		result, uploadErr = d.p115Client.uploadTo115(ctx, stream, p115DirID)
+		if uploadErr == nil && result != nil {
+			break
+		}
+		if attempt < 3 {
+			time.Sleep(1 * time.Second)
+		}
+	}
 	elapsed := time.Since(start)
 
 	if uploadErr != nil || result == nil {

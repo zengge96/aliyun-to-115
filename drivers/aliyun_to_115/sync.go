@@ -158,17 +158,17 @@ func (d *AliyunTo115) doSync() {
 	currentStatsMu.Unlock()
 
 	// 注册信号处理，Ctrl+C 时打印进度
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
 	go func() {
-		sigCh := make(chan os.Signal, 1)
-		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-		<-sigCh
+		<-ctx.Done() // 等待信号触发
 		currentStatsMu.Lock()
 		defer currentStatsMu.Unlock()
 		if currentStats != nil {
 			fmt.Printf("\n[aliyun_to_115] ===== 用户中断: 跳过%v / 秒传%v / 正常%v / 失败%v =====\n",
 				currentStats.skipped, currentStats.rapid, currentStats.normal, currentStats.failed)
 		}
-		os.Exit(0)
 	}()
 
 	// 用户配置的目标 115 根目录

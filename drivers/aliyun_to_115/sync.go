@@ -19,6 +19,7 @@ import (
 
 	_115 "github.com/OpenListTeam/OpenList/v4/drivers/115"
 	"github.com/OpenListTeam/OpenList/v4/drivers/aliyundrive_share2open"
+	"github.com/OpenListTeam/OpenList/v4/drivers/115_share"
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
 	"github.com/OpenListTeam/OpenList/v4/pkg/http_range"
 	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
@@ -608,7 +609,7 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 		}
 	}
 
-	stream = newUrlFileStreamer(path.Base(dstPath), fileSize, sha1Str, link.URL)
+	stream := newUrlFileStreamer(path.Base(dstPath), fileSize, sha1Str, link.URL)
 	start := time.Now()
 	
 	// 使用动态获取到的 p115DirID 上传

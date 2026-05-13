@@ -284,7 +284,8 @@ func (d *AliyunTo115) doSync() {
 	// ========== 驱动遍历模式） ==========
 	db, err := initDB("./data/work.db")
 	if err != nil {
-		log.Fatalf("无法初始化数据库: %v", err)
+		fmt.Printf("无法初始化数据库: %v", err)
+		return
 	}
 	defer db.Close()
 

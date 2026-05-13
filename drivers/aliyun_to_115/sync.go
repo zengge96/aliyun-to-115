@@ -545,10 +545,10 @@ func (d *AliyunTo115) processSingleFile_http(ctx context.Context, srcPath string
 	}
 
 	if stream.rapidUpload {
-		fmt.Printf("[aliyun_to_115] ⚡ 秒传成功: %s -> 115目录ID(%s) [%v]\n", srcPath, p115DirID, elapsed)
+		fmt.Printf("[aliyun_to_115] ⚡ 秒传成功: %s -> %s [%v]\n", srcPath, p115DirStr+"/"+path.Base(dstPath), elapsed)
 		stats.rapid++
 	} else {
-		fmt.Printf("[aliyun_to_115] 📤 正常上传: %s -> 115目录ID(%s) [%v]\n", srcPath, p115DirID, elapsed)
+		fmt.Printf("[aliyun_to_115] 📤 正常上传: %s -> %s [%v]\n", srcPath, p115DirStr+"/"+path.Base(dstPath), elapsed)
 		stats.normal++
 	}
 
@@ -633,10 +633,10 @@ func (d *AliyunTo115) processSingleFile_file(ctx context.Context, srcPath string
 	}
 
 	if stream.rapidUpload {
-		fmt.Printf("[aliyun_to_115] ⚡ 秒传成功: %s -> 115目录ID(%s) [%v]\n", srcPath, p115DirID, elapsed)
+		fmt.Printf("[aliyun_to_115] ⚡ 秒传成功: %s -> %s [%v]\n", srcPath, p115DirStr+"/"+path.Base(dstPath), elapsed)
 		stats.rapid++
 	} else {
-		fmt.Printf("[aliyun_to_115] 📤 正常上传: %s -> 115目录ID(%s) [%v]\n", srcPath, p115DirID, elapsed)
+		fmt.Printf("[aliyun_to_115] 📤 正常上传: %s -> %s [%v]\n", srcPath, p115DirStr+"/"+path.Base(dstPath), elapsed)
 		stats.normal++
 	}
 
@@ -743,10 +743,10 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 	}
 
 	if stream.rapidUpload {
-		fmt.Printf("[aliyun_to_115] ⚡ 秒传成功: %s -> 115目录ID(%s) [%v]\n", srcPath, p115DirID, elapsed)
+		fmt.Printf("[aliyun_to_115] ⚡ 秒传成功: %s -> %s [%v]\n", srcPath, p115DirStr+"/"+path.Base(dstPath), elapsed)
 		stats.rapid++
 	} else {
-		fmt.Printf("[aliyun_to_115] 📤 正常上传: %s -> 115目录ID(%s) [%v]\n", srcPath, p115DirID, elapsed)
+		fmt.Printf("[aliyun_to_115] 📤 正常上传: %s -> %s [%v]\n", srcPath, p115DirStr+"/"+path.Base(dstPath), elapsed)
 		stats.normal++
 	}
 

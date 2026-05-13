@@ -343,6 +343,10 @@ func (d *AliyunTo115) walkAndSync(ctx context.Context, aliyun aliyunStorage, cur
 		return err
 	}
 
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].GetName() < files[j].GetName()
+	})
+
 	for _, f := range files {
 		if f.IsDir() {
 			subPath := currentPath + f.GetName() + "/"

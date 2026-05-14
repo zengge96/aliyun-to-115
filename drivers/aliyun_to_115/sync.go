@@ -524,7 +524,8 @@ func (d *AliyunTo115) fsWalkAndSync(ctx context.Context, currentPath string, tar
 			}
 
 			if *fullScan {
-				dstPath := targetBase + fullPath
+				relPath := strings.TrimPrefix(fullPath, currentPath)
+			dstPath := strings.TrimSuffix(targetBase, "/") + relPath
 				setBreakpoint(db, fullPath) 
 				stats.total++
 				if err := d.processSingleFile(ctx, fullPath, dstPath, stats); err != nil {

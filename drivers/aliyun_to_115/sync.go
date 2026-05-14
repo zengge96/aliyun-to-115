@@ -29,6 +29,7 @@ import (
 	"github.com/OpenListTeam/OpenList/v4/pkg/utils"
 	"github.com/OpenListTeam/OpenList/v4/internal/op"
 	"github.com/OpenListTeam/OpenList/v4/internal/fs"
+	"github.com/OpenListTeam/OpenList/v4/internal/driver"
 )
 
 type sync115Client struct {

@@ -328,7 +328,7 @@ func (d *AliyunTo115) doSync() {
 
 	// 使用 fs.List 遍历所有文件，按 provider 白名单过滤
 	fmt.Println("[aliyun_to_115] 开始通过fs.List遍历文件...")
-	d.fsWalkAndSync(ctx, "/每日更新/动漫/国漫/所有", stats, breakpointPath, &fullScan, db2)
+	d.fsWalkAndSync(ctx, "/每日更新/动漫/国漫", stats, breakpointPath, &fullScan, db2)
 
 	clearBreakpoint(db2)
 

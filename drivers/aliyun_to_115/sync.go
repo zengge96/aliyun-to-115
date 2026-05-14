@@ -290,8 +290,21 @@ func (d *AliyunTo115) doSync() {
 					failed = false
 				}
 			} else {
-				if err := d.processSingleFile(ctx, srcPath, dstPath, stats); err == nil {
-					failed = false
+				// 检查是否为目录，如果是则调用 fsWalkAndSync 遍历
+				_, file, err := getRealDriverAndFile(ctx, srcPath)
+				if err == nil && file != nil && file.IsDir() {
+					// 目录：调用 fsWalkAndSync，目标基准路径为 dstPath
+					fullScan := true
+					if err := d.fsWalkAndSync(ctx, srcPath+"/", dstPath, stats, "", &fullScan, db2); err != nil {
+						fmt.Printf("[aliyun_to_115] fsWalkAndSync目录同步失败 [%s]: %v\n", srcPath, err)
+					} else {
+						failed = false
+					}
+				} else {
+					// 文件：走原有 processSingleFile 流程
+					if err := d.processSingleFile(ctx, srcPath, dstPath, stats); err == nil {
+						failed = false
+					}
 				}
 			}
 			

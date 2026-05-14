@@ -966,8 +966,8 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 	aliyun, realFile, err := getRealDriverAndFile(ctx, srcPath)
 	if err != nil {
 		fmt.Printf("[aliyun_to_115] 获取源文件或驱动失败， fullPath=%s : %v\n", srcPath, err)
-		return err
 		stats.failed++
+		return err
 	}
 
 	if realFile.IsDir() {

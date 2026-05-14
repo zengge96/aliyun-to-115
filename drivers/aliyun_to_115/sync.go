@@ -717,7 +717,7 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 	}
 	if f.IsDir() {
 		stats.failed++
-		return errors.New("[aliyun_to_115] 源文件对象是目录， fullPath=%s\n", srcPath)
+		return fmt.Errorf("[aliyun_to_115] 源文件对象是目录， fullPath=%s", srcPath)
 	}
 
 	p115DirStr := d.GetStorage().MountPath + path.Dir(dstPath)

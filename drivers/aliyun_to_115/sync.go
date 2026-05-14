@@ -329,7 +329,7 @@ func (d *AliyunTo115) doSync() {
 
 	// 使用 fs.List 遍历所有文件，按 provider 白名单过滤
 	fmt.Println("[aliyun_to_115] 开始通过fs.List遍历文件...")
-	d.fsWalkAndSync(ctx, "/", stats, breakpointPath, &fullScan, db2)
+	d.fsWalkAndSync(ctx, "/", "", stats, breakpointPath, &fullScan, db2)
 
 	clearBreakpoint(db2)
 
@@ -472,7 +472,7 @@ func getRealDriverAndFile(ctx context.Context, itemPath string) (driver.Driver, 
 }
 
 // fsWalkAndSync 使用 fs.List 遍历所有文件，通过 provider 白名单过滤
-func (d *AliyunTo115) fsWalkAndSync(ctx context.Context, currentPath string, stats *syncStats, breakpointPath string, fullScan *bool, db *sql.DB) error {
+func (d *AliyunTo115) fsWalkAndSync(ctx context.Context, currentPath string, targetBase string, stats *syncStats, breakpointPath string, fullScan *bool, db *sql.DB) error {
 	if !strings.HasSuffix(currentPath, "/") {
 		currentPath += "/"
 	}
@@ -507,7 +507,7 @@ func (d *AliyunTo115) fsWalkAndSync(ctx context.Context, currentPath string, sta
 				}
 			}
 
-			d.fsWalkAndSync(ctx, subPath, stats, breakpointPath, fullScan, db)
+			d.fsWalkAndSync(ctx, subPath, targetBase, stats, breakpointPath, fullScan, db)
 		} else {
 			fullPath := currentPath + f.GetName()
 
@@ -524,10 +524,11 @@ func (d *AliyunTo115) fsWalkAndSync(ctx context.Context, currentPath string, sta
 			}
 
 			if *fullScan {
+				dstPath := targetBase + fullPath
 				setBreakpoint(db, fullPath) 
 				stats.total++
-				if err := d.processSingleFile(ctx, fullPath, fullPath, stats); err != nil {
-					failedLine := fmt.Sprintf("%s#%s\n", fullPath, fullPath)
+				if err := d.processSingleFile(ctx, fullPath, dstPath, stats); err != nil {
+					failedLine := fmt.Sprintf("%s#%s\n", fullPath, dstPath)
 					if f, err := os.OpenFile("./failed.txt", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
 						f.WriteString(failedLine)
 						f.Close()

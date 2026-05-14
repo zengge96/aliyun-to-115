@@ -341,53 +341,67 @@ func (d *AliyunTo115) doSync() {
 	return
 }
 
-type AliasAddition struct {
-	Paths string `json:"paths"`
-}
-
 func getRealProvider(ctx context.Context, itemPath string) string {
 	drv, err := fs.GetStorage(itemPath, &fs.GetStoragesArgs{})
-	if err != nil || drv == nil {
+	if err != nil || drv == nil || drv.GetStorage() == nil {
 		return "unknown"
 	}
 
 	s := drv.GetStorage()
-	if s == nil {
-		return "unknown"
-	}
-
 	if s.Driver != "Alias" {
 		return s.Driver
 	}
 
-	var addition AliasAddition
-	if err := json.Unmarshal([]byte(s.Addition), &addition); err != nil {
+	// 1. 获取并解析 Addition 配置
+	type Addition struct {
+		Paths string `json:"paths"`
+	}
+	var add Addition
+	if err := json.Unmarshal([]byte(s.Addition), &add); err != nil {
 		return "Alias"
 	}
 
+	// 2. 模拟 Init 逻辑：解析路径映射 (保持逻辑一致)
+	// 我们需要将配置的路径拆解为 map[前缀][]真实路径
+	pathMap := make(map[string][]string)
+	for _, line := range strings.Split(add.Paths, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		// 假设 getPair 逻辑是：k 为别名/前缀，v 为路径
+		k, v := getPair(line) 
+		pathMap[k] = append(pathMap[k], v)
+	}
+
+	// 3. 计算相对路径
 	relPath := strings.TrimPrefix(itemPath, s.MountPath)
 	if !strings.HasPrefix(relPath, "/") {
 		relPath = "/" + relPath
 	}
-
 	if relPath == "/" {
 		return "Alias"
 	}
 
-	targetPaths := strings.Split(addition.Paths, "\n")
-	for _, target := range targetPaths {
-		target = strings.TrimSpace(target)
-		if target == "" {
-			continue
-		}
-
-		realPath := strings.TrimSuffix(target, "/") + relPath
-
-		fmt.Printf("realPath:%s\n", realPath)
-
-		_, err := fs.Get(ctx, realPath, &fs.GetArgs{NoLog: true}) 
-		if err == nil {
-			return getRealProvider(ctx, realPath)
+	// 4. 路径探测逻辑
+	// 遍历 pathMap 寻找匹配的逻辑分支
+	for prefix, targets := range pathMap {
+		// 如果 relPath 属于这个分支 (例如 relPath 为 /music/a.mp3, prefix 为 /music)
+		if strings.HasPrefix(relPath, prefix) {
+			subPath := strings.TrimPrefix(relPath, prefix)
+			
+			for _, target := range targets {
+				// 拼接出完整的物理路径
+				// 这里处理了路径拼接的斜杠问题
+				realPath := strings.TrimSuffix(target, "/") + "/" + strings.TrimPrefix(subPath, "/")
+				
+				// 探测该路径是否存在
+				_, err := fs.Get(ctx, realPath, &fs.GetArgs{NoLog: true})
+				if err == nil {
+					// 递归调用：如果下一层依然是 Alias，会自动进入下一轮循环
+					return getRealProvider(ctx, realPath)
+				}
+			}
 		}
 	}
 

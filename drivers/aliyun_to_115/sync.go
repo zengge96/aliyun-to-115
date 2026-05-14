@@ -380,7 +380,6 @@ func getRealProvider(ctx context.Context, itemPath string) string {
 		if line == "" {
 			continue
 		}
-		// 调用你项目中的 getPair
 		k, v := getPair(line)
 		if _, ok := pathMap[k]; !ok {
 			rootOrder = append(rootOrder, k)

@@ -391,7 +391,11 @@ func (d *AliyunTo115) fsWalkAndSync(ctx context.Context, currentPath string, sta
 			}
 
 			if err := d.processSingleFile(ctx, fullPath, fullPath, stats); err != nil {
-				fmt.Printf("[aliyun_to_115] 处理文件失败: %s : %v\n", fullPath, err)
+				failedLine := fmt.Sprintf("%s#%s\n", fullPath, fullPath)
+				if f, err := os.OpenFile("./failed.txt", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+					f.WriteString(failedLine)
+					f.Close()
+				}	
 			}
 		}
 	}

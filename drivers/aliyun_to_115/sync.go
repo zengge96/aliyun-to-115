@@ -937,6 +937,9 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 	}
 
 	stream := newUrlFileStreamer(path.Base(dstPath), fileSize, sha1Str, link.URL)
+
+	fmt.Printf("fileSize %d, sha1Str %s dstPath %s", fileSize, sha1Str, dstPath)
+
 	var result model.Obj
 	var uploadErr error
 	start := time.Now()

@@ -82,7 +82,8 @@ var providerWhiteList = []string{
 	"AliyundriveShare2Open",
 	"115 Share",
 	"115 Cloud",
-	"unknown",
+	"unknown", // 比如驱动MountPath是"/每日更新/XXX"， "/每日更新"找不到驱动，返回unknown
+	"Alias",
 }
 
 type syncStats struct {
@@ -439,12 +440,16 @@ func (d *AliyunTo115) fsWalkAndSync(ctx context.Context, currentPath string, sta
 				}
 			}
 
-			if err := d.processSingleFile(ctx, fullPath, fullPath, stats); err != nil {
-				failedLine := fmt.Sprintf("%s#%s\n", fullPath, fullPath)
-				if f, err := os.OpenFile("./failed.txt", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
-					f.WriteString(failedLine)
-					f.Close()
-				}	
+			if *fullScan {
+				setBreakpoint(db, fullPath) 
+				stats.total++
+				if err := d.processSingleFile(ctx, fullPath, fullPath, stats); err != nil {
+					failedLine := fmt.Sprintf("%s#%s\n", fullPath, fullPath)
+					if f, err := os.OpenFile("./failed.txt", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+						f.WriteString(failedLine)
+						f.Close()
+					}	
+				}
 			}
 		}
 	}
@@ -801,8 +806,8 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 	aliyun, _, err := op.GetStorageAndActualPath(srcPath)
 	if err != nil {
 		fmt.Printf("[aliyun_to_115] 获取源文件驱动失败， fullPath=%s : %v\n", srcPath, err)
-		stats.failed++
 		return err
+		stats.failed++
 	}
 
 	f, err := fs.Get(ctx, srcPath, &fs.GetArgs{NoLog: true})

@@ -76,6 +76,12 @@ var (
 	currentStatsMu sync.Mutex
 )
 
+var providerWhiteList = []string{
+	"AliyundriveOpen",
+	"AliyundriveShare2Open",
+	"Pan115Share",
+}
+
 type syncStats struct {
 	total   int64
 	skipped int64
@@ -145,7 +151,6 @@ func (d *AliyunTo115) doSync() {
 	}()
 
 	ctx := context.Background()
-	aliyunStorages := d.discoverAliyunStorages()
 	stats := &syncStats{}
 	currentStatsMu.Lock()
 	currentStats = stats
@@ -316,34 +321,9 @@ func (d *AliyunTo115) doSync() {
 		fmt.Printf("[aliyun_to_115] 读取到断点: %s，准备恢复扫描...\n", breakpointPath)
 	}
 
-	sort.Slice(aliyunStorages, func(i, j int) bool {
-		mi := ""
-		mj := ""
-		if aliyunStorages[i].GetStorage() != nil {
-			mi = aliyunStorages[i].GetStorage().MountPath
-		}
-		if aliyunStorages[j].GetStorage() != nil {
-			mj = aliyunStorages[j].GetStorage().MountPath
-		}
-		return mi < mj
-	})
-
-	for _, aliyun := range aliyunStorages {
-		storage := aliyun.GetStorage()
-		mountPath := "/"
-		if storage != nil {
-			mountPath = storage.MountPath
-		}
-		
-		fmt.Printf("[aliyun_to_115] 正在处理阿里存储: %s\n", mountPath)
-
-		aliRootID := aliyun.GetRootId()
-		
-		err := d.walkAndSync(ctx, aliyun, mountPath, aliRootID, stats, breakpointPath, &fullScan, db2)
-		if err != nil {
-			fmt.Printf("[aliyun_to_115] walk error for %s: %v\n", mountPath, err)
-		}
-	}
+	// 使用 fs.List 遍历所有文件，按 provider 白名单过滤
+	fmt.Println("[aliyun_to_115] 开始通过fs.List遍历文件...")
+	d.fsWalkAndSync(ctx, "/", stats, breakpointPath, &fullScan, db2)
 
 	clearBreakpoint(db2)
 
@@ -354,6 +334,64 @@ func (d *AliyunTo115) doSync() {
 		selfTerminate()
 	}
 	return
+}
+
+// fsWalkAndSync 使用 fs.List 遍历所有文件，通过 provider 白名单过滤
+func (d *AliyunTo115) fsWalkAndSync(ctx context.Context, currentPath string, stats *syncStats, breakpointPath string, fullScan *bool, db *sql.DB) error {
+	if !strings.HasSuffix(currentPath, "/") {
+		currentPath += "/"
+	}
+
+	files, err := fs.List(ctx, currentPath, &fs.ListArgs{NoLog: true})
+	if err != nil {
+		return err
+	}
+
+	for _, f := range files {
+		provider, _ := model.GetProvider(f)
+		inWhiteList := false
+		for _, p := range providerWhiteList {
+			if provider == p {
+				inWhiteList = true
+				break
+			}
+		}
+		if !inWhiteList {
+			continue
+		}
+
+		if f.IsDir() {
+			subPath := currentPath + f.GetName() + "/"
+
+			if !(*fullScan) {
+				if !strings.HasPrefix(breakpointPath, subPath) {
+					continue
+				}
+			}
+
+			d.fsWalkAndSync(ctx, subPath, stats, breakpointPath, fullScan, db)
+		} else {
+			fullPath := currentPath + f.GetName()
+
+			if !(*fullScan) {
+				if fullPath == breakpointPath {
+					fmt.Printf("\n>>> 精确匹配到断点文件: %s <<<\n", fullPath)
+					fmt.Println(">>> 状态已切换，开始从此处恢复同步任务...")
+					time.Sleep(1 * time.Second)
+					*fullScan = true
+					clearBreakpoint(db)
+				} else {
+					continue
+				}
+			}
+
+			if err := d.processSingleFile(ctx, fullPath, fullPath, stats); err != nil {
+				fmt.Printf("[aliyun_to_115] 处理文件失败: %s : %v\n", fullPath, err)
+			}
+		}
+	}
+
+	return nil
 }
 
 func (d *AliyunTo115) walkAndSync(ctx context.Context, aliyun aliyunStorage, currentPath, aliParentID string, stats *syncStats, breakpointPath string, fullScan *bool, db *sql.DB) error {

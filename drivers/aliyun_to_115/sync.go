@@ -341,11 +341,11 @@ func (d *AliyunTo115) doSync() {
 	return
 }
 
-func getPair(path string) (string, string) {
-	if name, path, ok := strings.Cut(path, ":"); ok && !strings.Contains(name, "/") {
-		return name, path
+func getPair(spath string) (string, string) {
+	if name, spath, ok := strings.Cut(spath, ":"); ok && !strings.Contains(name, "/") {
+		return name, spath
 	}
-	return path.Base(path), path
+	return path.Base(spath), spath
 }
 
 func getRealProvider(ctx context.Context, itemPath string) string {

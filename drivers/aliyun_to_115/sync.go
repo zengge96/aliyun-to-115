@@ -361,7 +361,7 @@ func (d *AliyunTo115) fsWalkAndSync(ctx context.Context, currentPath string, sta
 	for _, f := range files {
 		fmt.Printf("[aliyun_to_115]4\n")
 		provider, _ := model.GetProvider(f)
-		fmt.Printf("[aliyun_to_115]provider: %s\n", provider)
+		fmt.Printf("[aliyun_to_115]provider: %s@, path:\n", provider, f.GetName())
 		inWhiteList := false
 		for _, p := range providerWhiteList {
 			if provider == p {

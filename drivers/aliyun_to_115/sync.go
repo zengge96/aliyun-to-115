@@ -344,17 +344,23 @@ func (d *AliyunTo115) fsWalkAndSync(ctx context.Context, currentPath string, sta
 		currentPath += "/"
 	}
 
+	fmt.Printf("[aliyun_to_115]1\n")
+
 	files, err := fs.List(ctx, currentPath, &fs.ListArgs{NoLog: true})
 	if err != nil {
 		return err
 	}
+	fmt.Printf("[aliyun_to_115]2\n")
 
 	sort.Slice(files, func(i, j int) bool {
 		return files[i].GetName() < files[j].GetName()
 	})
+	fmt.Printf("[aliyun_to_115]3\n")
 
 	for _, f := range files {
+		fmt.Printf("[aliyun_to_115]4\n")
 		provider, _ := model.GetProvider(f)
+		fmt.Printf("[aliyun_to_115]provider: %s\n", provider)
 		inWhiteList := false
 		for _, p := range providerWhiteList {
 			if provider == p {
@@ -362,12 +368,14 @@ func (d *AliyunTo115) fsWalkAndSync(ctx context.Context, currentPath string, sta
 				break
 			}
 		}
+		fmt.Printf("[aliyun_to_115]5\n")
 		if !inWhiteList {
 			continue
 		}
 
 		if f.IsDir() {
 			subPath := currentPath + f.GetName() + "/"
+			fmt.Printf("[aliyun_to_115]6\n")
 
 			if !(*fullScan) {
 				if !strings.HasPrefix(breakpointPath, subPath) {
@@ -378,6 +386,7 @@ func (d *AliyunTo115) fsWalkAndSync(ctx context.Context, currentPath string, sta
 			d.fsWalkAndSync(ctx, subPath, stats, breakpointPath, fullScan, db)
 		} else {
 			fullPath := currentPath + f.GetName()
+			fmt.Printf("[aliyun_to_115]7\n")
 
 			if !(*fullScan) {
 				if fullPath == breakpointPath {

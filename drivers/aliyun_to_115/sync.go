@@ -437,6 +437,115 @@ func getRealProvider(ctx context.Context, itemPath string) string {
 	return "Alias"
 }
 
+func getRealDriverAndFile(ctx context.Context, itemPath string) (driver.Driver, model.Obj, error) {
+	drv, err := fs.GetStorage(itemPath, &fs.GetStoragesArgs{})
+	if err != nil || drv == nil || drv.GetStorage() == nil {
+		// 修正：遇到严重错误时，返回 nil 和 error，而不是字符串
+		return nil, nil, fmt.Errorf("storage not found for path %s: %w", itemPath, err)
+	}
+
+	s := drv.GetStorage()
+	
+	// 如果当前已经是具体的存储驱动（非Alias），直接返回
+	if s.Driver != "Alias" {
+		file, err := fs.Get(ctx, itemPath, &fs.GetArgs{NoLog: true})
+		// 修正：返回 drv (driver.Driver) 而不是 s (*model.Storage)
+		return drv, file, err
+	}
+
+	// 1. 获取并解析 Addition 配置
+	type AliasAddition struct {
+		Paths string `json:"paths"`
+	}
+	var addition AliasAddition
+	if err := json.Unmarshal([]byte(s.Addition), &addition); err != nil {
+		// 解析失败兜底：作为普通的 Alias 目录返回
+		file, err := fs.Get(ctx, itemPath, &fs.GetArgs{NoLog: true})
+		return drv, file, err
+	}
+
+	// 2. 模拟 Init 逻辑：构建映射表
+	pathMap := make(map[string][]string)
+	var rootOrder []string
+
+	lines := strings.Split(addition.Paths, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		k, v := getPair(line) // 假设 getPair 已存在
+		if _, ok := pathMap[k]; !ok {
+			rootOrder = append(rootOrder, k)
+		}
+		pathMap[k] = append(pathMap[k], v)
+	}
+
+	// 3. 计算相对路径
+	relPath := strings.TrimPrefix(itemPath, s.MountPath)
+	if !strings.HasPrefix(relPath, "/") {
+		relPath = "/" + relPath
+	}
+
+	// 如果访问的是 Alias 根目录本身，它没有真实的单一映射驱动，直接作为 Alias 返回
+	if relPath == "/" {
+		file, err := fs.Get(ctx, itemPath, &fs.GetArgs{NoLog: true})
+		return drv, file, err
+	}
+
+	// 4. 根据 rootOrder 的长度执行不同的查找逻辑
+	switch len(rootOrder) {
+	case 0:
+		// 配置为空兜底
+		file, err := fs.Get(ctx, itemPath, &fs.GetArgs{NoLog: true})
+		return drv, file, err
+
+	case 1:
+		// 单一根节点合并模式 (Union)
+		targets := pathMap[rootOrder[0]]
+		for _, target := range targets {
+			realPath := strings.TrimSuffix(target, "/") + relPath
+			_, err := fs.Get(ctx, realPath, &fs.GetArgs{NoLog: true})
+			if err == nil {
+				// 递归探测，确保钻取到最底层
+				return getRealDriverAndFile(ctx, realPath)
+			}
+		}
+
+	default:
+		// 多根节点模式
+		for _, prefix := range rootOrder {
+			// 为了防止 /a 匹配到 /ab 的情况，建议确保前缀带有路径边界符号
+			prefixMatch := prefix
+			if !strings.HasPrefix(prefixMatch, "/") {
+				prefixMatch = "/" + prefixMatch
+			}
+
+			// 精确匹配目录前缀
+			if relPath == prefixMatch || strings.HasPrefix(relPath, prefixMatch + "/") {
+				targets := pathMap[prefix]
+				subPath := strings.TrimPrefix(relPath, prefixMatch)
+				
+				for _, target := range targets {
+					realPath := strings.TrimSuffix(target, "/")
+					if subPath != "" && subPath != "/" {
+						realPath += "/" + strings.TrimPrefix(subPath, "/")
+					}
+
+					_, err := fs.Get(ctx, realPath, &fs.GetArgs{NoLog: true})
+					if err == nil {
+						return getRealDriverAndFile(ctx, realPath)
+					}
+				}
+			}
+		}
+	}
+
+	// 5. 最终兜底：如果遍历完都没有找到对应的物理文件，则当做普通的 Alias 对象返回（可能是404，由外层处理）
+	file, err := fs.Get(ctx, itemPath, &fs.GetArgs{NoLog: true})
+	return drv, file, err
+}
+
 // fsWalkAndSync 使用 fs.List 遍历所有文件，通过 provider 白名单过滤
 func (d *AliyunTo115) fsWalkAndSync(ctx context.Context, currentPath string, stats *syncStats, breakpointPath string, fullScan *bool, db *sql.DB) error {
 	if !strings.HasSuffix(currentPath, "/") {
@@ -852,6 +961,126 @@ func (d *AliyunTo115) processSingleFile_file(ctx context.Context, srcPath string
 }
 
 func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dstPath string, stats *syncStats) error {
+	aliyun, realFile, err := getRealDriverAndFile(ctx, srcPath)
+	if err != nil {
+		fmt.Printf("[aliyun_to_115] 获取源文件驱动失败， fullPath=%s : %v\n", srcPath, err)
+		return err
+		stats.failed++
+	}
+
+	f, err := fs.Get(ctx, srcPath, &fs.GetArgs{NoLog: true})
+	if err != nil {
+		fmt.Printf("[aliyun_to_115] 获取源文件对象失败， fullPath=%s : %v\n", srcPath, err)
+		stats.failed++
+		return err
+	}
+	if f.IsDir() {
+		stats.failed++
+		return fmt.Errorf("[aliyun_to_115] 源文件对象是目录， fullPath=%s", srcPath)
+	}
+
+	p115DirStr := d.GetStorage().MountPath + path.Dir(dstPath)
+	p115DirID, err := d.getOrCreateDirID(ctx, p115DirStr)
+	if err != nil {
+		stats.failed++
+		fmt.Printf("[aliyun_to_115] 准备115目标目录失败 [%s]: %v\n", p115DirStr, err)
+		return err
+	}
+
+	// 缓存逻辑
+	cacheKey := srcPath + "/" + f.GetID()
+	hashInfo := f.GetHash()
+	sha1Str := hashInfo.GetHash(utils.SHA1)
+	if sha1Str != "" {
+		cacheKey = srcPath + "/" + sha1Str
+	}
+
+	d.syncLoopMu.Lock()
+	if d.syncedCache[cacheKey] {
+		d.syncLoopMu.Unlock()
+		stats.skipped++
+		return nil
+	}
+	d.syncLoopMu.Unlock()
+
+	link, err := aliyun.Link(ctx, f, model.LinkArgs{})
+	// 兼容某些驱动可能重新获取一次 Hash
+	if driver, ok := aliyun.(*aliyundrive_share2open.AliyundriveShare2Open); ok {
+		sha1Str = driver.GetHash(ctx, realFile, model.LinkArgs{})
+	}
+
+	if err != nil || link == nil || link.URL == "" {
+		stats.noLink++
+		return errors.New("no link")
+	}
+
+	// 规避115 Share List的Size错误
+	fileSize := f.GetSize()
+	provider, _ := model.GetProvider(f)
+	if provider == "115 Share" {
+		req, _ := http.NewRequestWithContext(ctx, http.MethodHead, link.URL, nil)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			fmt.Printf("[aliyun_to_115] 115直链HEAD请求失败 [%s]: %v\n", srcPath, err)
+			return err
+		}
+		resp.Body.Close()
+		if resp.StatusCode != 200 {
+			fmt.Printf("[aliyun_to_115] 115直链HEAD请求非200 [%s]: status=%d\n", srcPath, resp.StatusCode)
+			return fmt.Errorf("HEAD status %d", resp.StatusCode)
+		}
+		fileSize = resp.ContentLength
+		if fileSize <= 0 {
+			fmt.Printf("[aliyun_to_115] 115直链无法获取文件大小 [%s]\n", srcPath)
+			return fmt.Errorf("content-length invalid")
+		}
+	}
+
+	stream := newUrlFileStreamer(path.Base(dstPath), fileSize, sha1Str, link.URL)
+
+	fmt.Printf("fileSize %d, sha1Str %s dstPath %s", fileSize, sha1Str, dstPath)
+
+	var result model.Obj
+	var uploadErr error
+	start := time.Now()
+	for attempt := 1; attempt <= 3; attempt++ {
+		result, uploadErr = d.p115Client.uploadTo115(ctx, stream, p115DirID)
+		if uploadErr == nil && result != nil {
+			break
+		}
+		if attempt < 3 {
+			time.Sleep(1 * time.Second)
+		}
+	}
+	elapsed := time.Since(start)
+
+	if uploadErr != nil || result == nil {
+		fmt.Printf("[aliyun_to_115] 上传失败: %s : %v\n", srcPath, uploadErr)
+		stats.failed++
+		return uploadErr
+	}
+
+	if stream.rapidUpload {
+		fmt.Printf("[aliyun_to_115] ⚡ 秒传成功: %s -> %s [%v]\n", srcPath, p115DirStr+"/"+path.Base(dstPath), elapsed)
+		stats.rapid++
+	} else {
+		fmt.Printf("[aliyun_to_115] 📤 正常上传: %s -> %s [%v]\n", srcPath, p115DirStr+"/"+path.Base(dstPath), elapsed)
+		stats.normal++
+	}
+
+	if d.DeleteAfterSync {
+		_ = d.p115Client.removeFrom115(ctx, result)
+	}
+
+	d.syncLoopMu.Lock()
+	d.syncedCache[cacheKey] = true
+	d.syncLoopMu.Unlock()
+	d.saveSyncedCache(cacheKey)
+	stats.synced++
+	return nil
+}
+
+func (d *AliyunTo115) _processSingleFile(ctx context.Context, srcPath string, dstPath string, stats *syncStats) error {
 	aliyun, _, err := op.GetStorageAndActualPath(srcPath)
 	if err != nil {
 		fmt.Printf("[aliyun_to_115] 获取源文件驱动失败， fullPath=%s : %v\n", srcPath, err)

@@ -411,7 +411,7 @@ func (d *AliyunTo115) fsWalkAndSync(ctx context.Context, currentPath string, sta
 
 	for _, f := range files {
 		provider := getRealProvider(ctx, filepath.Join(currentPath, f.GetName()))
-		fmt.Printf("provider:%s, path:%s", provider, filepath.Join(currentPath, f.GetName()))
+		fmt.Printf("provider:%s, path:%s\n", provider, filepath.Join(currentPath, f.GetName()))
 		inWhiteList := false
 		for _, p := range providerWhiteList {
 			if provider == p {

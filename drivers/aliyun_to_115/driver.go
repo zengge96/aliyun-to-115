@@ -34,6 +34,7 @@ type AliyunTo115 struct {
 	p115Client  *sync115Client
 	syncLoopMu  sync.Mutex
 	syncRunning bool
+	userInt bool
 	syncCacheDB *sql.DB
 	syncedCache  map[string]bool // SHA1 → true
 	basePath     string

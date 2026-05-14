@@ -129,6 +129,7 @@ func selfTerminate() {
 }
 
 func (d *AliyunTo115) doSync() {
+	d.userInt = true
 	d.syncLoopMu.Lock()
 	if d.syncRunning {
 		d.syncLoopMu.Unlock()
@@ -158,7 +159,7 @@ func (d *AliyunTo115) doSync() {
 		<-ctx.Done() // 等待信号触发
 		currentStatsMu.Lock()
 		defer currentStatsMu.Unlock()
-		if currentStats != nil {
+		if currentStats != nil && d.userInt {
 			fmt.Printf("\n[aliyun_to_115] ===== 用户中断: 跳过%v / 秒传%v / 正常%v / 失败%v =====\n",
 				currentStats.skipped, currentStats.rapid, currentStats.normal, currentStats.failed)
 		}
@@ -301,6 +302,7 @@ func (d *AliyunTo115) doSync() {
 		fmt.Printf("[aliyun_to_115] ===== 同步完成: 跳过%v / 秒传%v / 正常%v / 失败%v =====\n",
 			stats.skipped, stats.rapid, stats.normal, stats.failed)
 		if d.RunOnce {
+			d.userInt = false
 			selfTerminate()
 		}
 		return

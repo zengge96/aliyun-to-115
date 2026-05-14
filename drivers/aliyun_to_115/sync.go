@@ -310,6 +310,7 @@ func (d *AliyunTo115) doSync() {
 	}
 
 	// ========== 驱动遍历模式 ==========
+	d.discoverAliyunStorages()
 	initDBBreakpoint(db2)
 
 	breakpointPath := getBreakpoint(db2)

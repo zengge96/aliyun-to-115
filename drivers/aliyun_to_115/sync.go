@@ -489,6 +489,7 @@ func (d *AliyunTo115) fsWalkAndSync(ctx context.Context, currentPath string, tar
 	if !strings.HasSuffix(currentPath, "/") {
 		currentPath += "/"
 	}
+	fmt.Printf("[fsWalkAndSync] 进入目录: currentPath=%s targetBase=%s\n", currentPath, targetBase)
 
 	files, err := fs.List(ctx, currentPath, &fs.ListArgs{NoLog: true})
 	if err != nil {
@@ -520,6 +521,7 @@ func (d *AliyunTo115) fsWalkAndSync(ctx context.Context, currentPath string, tar
 				}
 			}
 
+			fmt.Printf("[fsWalkAndSync] 进入子目录: subPath=%s\n", subPath)
 			d.fsWalkAndSync(ctx, subPath, targetBase, stats, breakpointPath, fullScan, db)
 		} else {
 			fullPath := currentPath + f.GetName()

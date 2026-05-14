@@ -484,24 +484,36 @@ func getRealDriverAndFile(ctx context.Context, itemPath string) (driver.Driver, 
 	return drv, file, err
 }
 
-// fsWalkAndSync 使用 fs.List 遍历所有文件，通过 provider 白名单过滤
 func (d *AliyunTo115) fsWalkAndSync(ctx context.Context, currentPath string, targetBase string, stats *syncStats, breakpointPath string, fullScan *bool, db *sql.DB) error {
+	// 1. 标准化当前路径，确保以 / 结尾
 	if !strings.HasSuffix(currentPath, "/") {
 		currentPath += "/"
 	}
-	fmt.Printf("[fsWalkAndSync] 进入目录: currentPath=%s targetBase=%s\n", currentPath, targetBase)
 
-	files, err := fs.List(ctx, currentPath, &fs.ListArgs{NoLog: true})
-	if err != nil {
-		return err
+	// 2. 检查 Context 是否已取消（处理外部中断）
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
 	}
 
+	// 3. 获取当前目录下的文件列表
+	files, err := fs.List(ctx, currentPath, &fs.ListArgs{NoLog: true})
+	if err != nil {
+		return fmt.Errorf("list %s failed: %w", currentPath, err)
+	}
+
+	// 4. 排序以确保断点恢复的逻辑顺序一致
 	sort.Slice(files, func(i, j int) bool {
 		return files[i].GetName() < files[j].GetName()
 	})
 
 	for _, f := range files {
-		provider := getRealProvider(ctx, filepath.Join(currentPath, f.GetName()))
+		fName := f.GetName()
+		fullPath := currentPath + fName
+
+		// 5. 白名单校验
+		provider := getRealProvider(ctx, fullPath)
 		inWhiteList := false
 		for _, p := range providerWhiteList {
 			if provider == p {
@@ -514,41 +526,45 @@ func (d *AliyunTo115) fsWalkAndSync(ctx context.Context, currentPath string, tar
 		}
 
 		if f.IsDir() {
-			subPath := currentPath + f.GetName() + "/"
+			subPath := fullPath + "/"
+			// 6. 目录断点判定：如果不在全量扫描模式，且断点不在该目录下，则跳过
 			if !(*fullScan) {
 				if !strings.HasPrefix(breakpointPath, subPath) {
 					continue
 				}
 			}
 
-			fmt.Printf("[fsWalkAndSync] 进入子目录: subPath=%s\n", subPath)
-			d.fsWalkAndSync(ctx, subPath, targetBase, stats, breakpointPath, fullScan, db)
+			// 7. 递归调用，并保持目标路径层级同步
+			subTargetBase := filepath.Join(targetBase, fName)
+			if err := d.fsWalkAndSync(ctx, subPath, subTargetBase, stats, breakpointPath, fullScan, db); err != nil {
+				return err
+			}
 		} else {
-			fullPath := currentPath + f.GetName()
-
+			// 8. 文件断点判定
 			if !(*fullScan) {
 				if fullPath == breakpointPath {
-					fmt.Printf("\n>>> 精确匹配到断点文件: %s <<<\n", fullPath)
-					fmt.Println(">>> 状态已切换，开始从此处恢复同步任务...")
-					time.Sleep(1 * time.Second)
+					fmt.Printf("\n>>> 匹配到断点文件: %s，恢复同步 <<<\n", fullPath)
 					*fullScan = true
 					clearBreakpoint(db)
+					// 注意：此处不 continue，断点文件本身通常需要重新处理
 				} else {
 					continue
 				}
 			}
 
+			// 9. 执行同步
 			if *fullScan {
-				relPath := strings.TrimPrefix(fullPath, currentPath)
-			dstPath := strings.TrimSuffix(targetBase, "/") + relPath
-				setBreakpoint(db, fullPath) 
+				dstPath := filepath.Join(targetBase, fName)
+				setBreakpoint(db, fullPath)
 				stats.total++
+
 				if err := d.processSingleFile(ctx, fullPath, dstPath, stats); err != nil {
+					// 记录失败日志
 					failedLine := fmt.Sprintf("%s#%s\n", fullPath, dstPath)
 					if f, err := os.OpenFile("./failed.txt", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
 						f.WriteString(failedLine)
 						f.Close()
-					}	
+					}
 				}
 			}
 		}

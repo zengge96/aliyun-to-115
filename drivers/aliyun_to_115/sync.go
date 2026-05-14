@@ -9,6 +9,7 @@ import (
 	"net/url"
 	//"strconv"
 	"strings"
+	"encoding/json"
 	"time"
 	"database/sql"
 	"os"
@@ -340,7 +341,7 @@ func (d *AliyunTo115) doSync() {
 }
 
 func getRealProvider(ctx context.Context, itemPath string) string {
-	storage, err := fs.GetStorage(itemPath)
+	storage, err := fs.GetStorage(itemPath, &fs.GetStoragesArgs{})
 	if err != nil || storage == nil {
 		return "unknown"
 	}
@@ -351,7 +352,7 @@ func getRealProvider(ctx context.Context, itemPath string) string {
 	}
 
 	// 2. 如果是 Alias，提取其数据库中配置的目标路径 (Addition 字段存的是 JSON)
-	var addition AliasAddition
+	var addition Addition
 	if err := json.Unmarshal([]byte(storage.Addition), &addition); err != nil {
 		return "Alias" // 解析失败，退化为返回 Alias
 	}

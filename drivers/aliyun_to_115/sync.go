@@ -341,6 +341,13 @@ func (d *AliyunTo115) doSync() {
 	return
 }
 
+func getPair(path string) (string, string) {
+	if name, path, ok := strings.Cut(path, ":"); ok && !strings.Contains(name, "/") {
+		return name, path
+	}
+	return stdpath.Base(path), path
+}
+
 func getRealProvider(ctx context.Context, itemPath string) string {
 	drv, err := fs.GetStorage(itemPath, &fs.GetStoragesArgs{})
 	if err != nil || drv == nil || drv.GetStorage() == nil {

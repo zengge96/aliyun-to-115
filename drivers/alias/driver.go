@@ -113,14 +113,12 @@ func (d *Alias) GetRoot(ctx context.Context) (model.Obj, error) {
 // 通过op.Get调用的话，path一定是子路径(/开头)
 func (d *Alias) Get(ctx context.Context, path string) (model.Obj, error) {
 	roots, sub := d.getRootsAndPath(path)
-	fmt.Printf("roots: %s, sub: %s\n", roots, sub)
 	if len(roots) == 0 {
 		return nil, errs.ObjectNotFound
 	}
 	for idx, root := range roots {
 		rawPath := stdpath.Join(root, sub)
 		obj, err := fs.Get(ctx, rawPath, &fs.GetArgs{NoLog: true})
-		fmt.Printf("roots: %s, sub: %s, hash: %s\n", roots, sub, obj.GetHash().GetHash(utils.SHA1))
 		if err != nil {
 			continue
 		}

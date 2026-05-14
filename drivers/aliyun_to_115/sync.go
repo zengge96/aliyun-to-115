@@ -86,24 +86,6 @@ type syncStats struct {
 	normal  int64
 }
 
-func initDB(dbPath string) (*sql.DB, error) {
-	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
-		return nil, err
-	}
-
-	db, err := sql.Open("sqlite3", dbPath)
-	if err != nil {
-		return nil, err
-	}
-
-	createTableSQL := `CREATE TABLE IF NOT EXISTS sync_state (
-		key TEXT PRIMARY KEY,
-		value TEXT
-	);`
-	_, err = db.Exec(createTableSQL)
-	return db, err
-}
-
 func getBreakpoint(db *sql.DB) string {
 	var val string
 	err := db.QueryRow("SELECT value FROM sync_state WHERE key = 'breakpoint'").Scan(&val)
@@ -177,6 +159,13 @@ func (d *AliyunTo115) doSync() {
 		configRootID = "0"
 	}
 
+	db2, err := sql.Open("sqlite3", strmDBFile)
+	if err != nil {
+		fmt.Printf("[aliyun_to_115] 打开work.db失败: %v\n", err)
+		return
+	}
+	defer db2.Close()
+
 	// ========== strm.txt 模式检测（SQLite） ==========
 	strmFile := filepath.Join(d.basePath, "strm.txt")
 	strmDBFile := filepath.Join(d.basePath, "data", "work.db")
@@ -189,13 +178,6 @@ func (d *AliyunTo115) doSync() {
 			fmt.Printf("[aliyun_to_115] 创建data目录失败: %v\n", err)
 			return
 		}
-
-		db2, err := sql.Open("sqlite3", strmDBFile)
-		if err != nil {
-			fmt.Printf("[aliyun_to_115] 打开work.db失败: %v\n", err)
-			return
-		}
-		defer db2.Close()
 
 		// 建表
 		if _, err := db2.Exec(`CREATE TABLE IF NOT EXISTS strm_tasks (
@@ -314,15 +296,13 @@ func (d *AliyunTo115) doSync() {
 		return
 	}
 
-	// ========== 驱动遍历模式） ==========
-	db, err := initDB("./data/work.db")
-	if err != nil {
-		fmt.Printf("无法初始化数据库: %v", err)
-		return
-	}
-	defer db.Close()
-
-	breakpointPath := getBreakpoint(db)
+	// ========== 驱动遍历模式 ==========
+	createTableSQL := `CREATE TABLE IF NOT EXISTS sync_state (
+		key TEXT PRIMARY KEY,
+		value TEXT
+	);`
+	
+	breakpointPath := getBreakpoint(db2)
 	fullScan := false
 	if breakpointPath == "" {
 		fmt.Println("[aliyun_to_115] 未发现断点记录，开始全新全量扫描...")
@@ -354,13 +334,13 @@ func (d *AliyunTo115) doSync() {
 
 		aliRootID := aliyun.GetRootId()
 		
-		err := d.walkAndSync(ctx, aliyun, mountPath, aliRootID, stats, breakpointPath, &fullScan, db)
+		err := d.walkAndSync(ctx, aliyun, mountPath, aliRootID, stats, breakpointPath, &fullScan, db2)
 		if err != nil {
 			fmt.Printf("[aliyun_to_115] walk error for %s: %v\n", mountPath, err)
 		}
 	}
 
-	clearBreakpoint(db)
+	clearBreakpoint(db2)
 
 	fmt.Printf("[aliyun_to_115] ===== 同步完成: 跳过%v / 秒传%v / 正常%v / 失败%v =====\n",
 		stats.skipped, stats.rapid, stats.normal, stats.failed)

@@ -370,7 +370,7 @@ func getRealProvider(ctx context.Context, itemPath string) string {
 		relPath = "/" + relPath
 	}
 
-	if realPath == "/" {
+	if relPath == "/" {
 		return "Alias"
 	}
 

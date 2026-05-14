@@ -527,7 +527,7 @@ func getRealDriverAndFile(ctx context.Context, itemPath string) (driver.Driver, 
 				targets := pathMap[prefix]
 				subPath := strings.TrimPrefix(relPath, prefixMatch)
 
-				for i, target := range targets {
+				for _, target := range targets {
 					realPath := strings.TrimSuffix(target, "/")
 					if subPath != "" && subPath != "/" {
 						realPath += "/" + strings.TrimPrefix(subPath, "/")

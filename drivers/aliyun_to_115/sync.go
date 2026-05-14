@@ -965,18 +965,12 @@ func (d *AliyunTo115) processSingleFile_file(ctx context.Context, srcPath string
 func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dstPath string, stats *syncStats) error {
 	aliyun, realFile, err := getRealDriverAndFile(ctx, srcPath)
 	if err != nil {
-		fmt.Printf("[aliyun_to_115] 获取源文件驱动失败， fullPath=%s : %v\n", srcPath, err)
+		fmt.Printf("[aliyun_to_115] 获取源文件或驱动失败， fullPath=%s : %v\n", srcPath, err)
 		return err
 		stats.failed++
 	}
 
-	f, err := fs.Get(ctx, srcPath, &fs.GetArgs{NoLog: true})
-	if err != nil {
-		fmt.Printf("[aliyun_to_115] 获取源文件对象失败， fullPath=%s : %v\n", srcPath, err)
-		stats.failed++
-		return err
-	}
-	if f.IsDir() {
+	if realFile.IsDir() {
 		stats.failed++
 		return fmt.Errorf("[aliyun_to_115] 源文件对象是目录， fullPath=%s", srcPath)
 	}
@@ -990,8 +984,8 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 	}
 
 	// 缓存逻辑
-	cacheKey := srcPath + "/" + f.GetID()
-	hashInfo := f.GetHash()
+	cacheKey := srcPath + "/" + realFile.GetID()
+	hashInfo := realFile.GetHash()
 	sha1Str := hashInfo.GetHash(utils.SHA1)
 	if sha1Str != "" {
 		cacheKey = srcPath + "/" + sha1Str
@@ -1017,8 +1011,8 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 	}
 
 	// 规避115 Share List的Size错误
-	fileSize := f.GetSize()
-	provider, _ := model.GetProvider(f)
+	fileSize := realFile.GetSize()
+	provider, _ := model.GetProvider(realFile)
 	if provider == "115 Share" {
 		req, _ := http.NewRequestWithContext(ctx, http.MethodHead, link.URL, nil)
 		resp, err := http.DefaultClient.Do(req)
@@ -1039,8 +1033,6 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 	}
 
 	stream := newUrlFileStreamer(path.Base(dstPath), fileSize, sha1Str, link.URL)
-
-	fmt.Printf("fileSize %d, sha1Str %s dstPath %s", fileSize, sha1Str, dstPath)
 
 	var result model.Obj
 	var uploadErr error

@@ -339,6 +339,56 @@ func (d *AliyunTo115) doSync() {
 	return
 }
 
+func getRealProvider(ctx context.Context, itemPath string) string {
+	storage, err := fs.GetStorage(itemPath)
+	if err != nil || storage == nil {
+		return "unknown"
+	}
+
+	// 1. 如果不是 Alias，直接返回当前的驱动名（如 AliyundriveShare2Open, 115 等）
+	if storage.Driver != "Alias" {
+		return storage.Driver
+	}
+
+	// 2. 如果是 Alias，提取其数据库中配置的目标路径 (Addition 字段存的是 JSON)
+	var addition AliasAddition
+	if err := json.Unmarshal([]byte(storage.Addition), &addition); err != nil {
+		return "Alias" // 解析失败，退化为返回 Alias
+	}
+
+	// 获取相对于 Alias 挂载点的子路径
+	// 比如: itemPath="/聚合盘/照片/1.jpg", MountPath="/聚合盘" => relPath="/照片/1.jpg"
+	relPath := strings.TrimPrefix(itemPath, storage.MountPath)
+	if !strings.HasPrefix(relPath, "/") {
+		relPath = "/" + relPath
+	}
+
+	// 3. Alias 支持挂载多个目标路径（按换行符分隔）
+	targetPaths := strings.Split(addition.Paths, "\n")
+	for _, target := range targetPaths {
+		target = strings.TrimSpace(target)
+		if target == "" {
+			continue
+		}
+
+		// 拼接出可能存在的真实绝对路径
+		// 比如 target="/阿里云盘", 则 realPath = "/阿里云盘/照片/1.jpg"
+		realPath := strings.TrimSuffix(target, "/") + relPath
+
+		// 4. 验证这个真实路径下文件/文件夹是否真的存在
+		// (因为 Alias 可能合并了多个网盘，我们必须试探文件具体归属于哪个网盘)
+		// 注意：如果你的 AList 版本的 fs.Get 只有2个参数，请删掉第三个参数
+		_, err := fs.Get(ctx, realPath, &fs.GetArgs{NoLog: true}) 
+		if err == nil {
+			// 找到文件真正存在的路径后，递归解析（防止该目标依然是另一个 Alias）
+			return getRealProvider(ctx, realPath)
+		}
+	}
+
+	// 如果多个路径里都没找到（正常不会发生），退化返回 Alias
+	return "Alias"
+}
+
 // fsWalkAndSync 使用 fs.List 遍历所有文件，通过 provider 白名单过滤
 func (d *AliyunTo115) fsWalkAndSync(ctx context.Context, currentPath string, stats *syncStats, breakpointPath string, fullScan *bool, db *sql.DB) error {
 	if !strings.HasSuffix(currentPath, "/") {
@@ -360,7 +410,7 @@ func (d *AliyunTo115) fsWalkAndSync(ctx context.Context, currentPath string, sta
 
 	for _, f := range files {
 		fmt.Printf("[aliyun_to_115]4\n")
-		provider, _ := model.GetProvider(f)
+		provider := getRealProvider(ctx, filepath.Join(currentPath, f.GetName()))
 		fmt.Printf("[aliyun_to_115]provider: %s, path:%s\n", provider, f.GetName())
 		inWhiteList := false
 		for _, p := range providerWhiteList {

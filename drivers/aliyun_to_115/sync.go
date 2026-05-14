@@ -502,7 +502,7 @@ func getRealDriverAndFile(ctx context.Context, itemPath string) (driver.Driver, 
 	case 1:
 		// 单一根节点合并模式 (Union)
 		targets := pathMap[rootOrder[0]]
-		for i, target := range targets {
+		for _, target := range targets {
 			realPath := strings.TrimSuffix(target, "/") + relPath
 			
 			_, err := fs.Get(ctx, realPath, &fs.GetArgs{NoLog: true})

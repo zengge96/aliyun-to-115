@@ -357,7 +357,7 @@ func getRealProvider(ctx context.Context, itemPath string) string {
 	}
 
 	if s.Driver != "Alias" {
-		return s.Driver
+		return "HHH"//s.Driver
 	}
 
 	var addition AliasAddition

@@ -400,8 +400,8 @@ func (d *AliyunTo115) walkAndSync(ctx context.Context, aliyun aliyunStorage, cur
 				setBreakpoint(db, fullPath) 
 				stats.total++
 
-				if err := d.processSingleFile(ctx, srcPath, dstPath, stats); err != nil {
-					failedLine := fmt.Sprintf("%s#%s\n", srcPath, dstPath)
+				if err := d.processSingleFile(ctx, fullPath, fullPath, stats); err != nil {
+					failedLine := fmt.Sprintf("%s#%s\n", fullPath, fullPath)
 					if f, err := os.OpenFile("./failed.txt", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
 						f.WriteString(failedLine)
 						f.Close()

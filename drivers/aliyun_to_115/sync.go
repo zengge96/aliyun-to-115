@@ -352,7 +352,7 @@ func getPair(spath string) (string, string) {
 func getRealProvider(ctx context.Context, itemPath string) string {
 	_, file, err := getRealDriverAndFile(ctx, itemPath)
 	if err == nil && file != nil {
-		provider, _ := model.GetProvider(realFile)
+		provider, _ := model.GetProvider(file)
 		return provider
 	} else {
 		return "unknown"

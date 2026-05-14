@@ -328,7 +328,7 @@ func (d *AliyunTo115) doSync() {
 
 	// 使用 fs.List 遍历所有文件，按 provider 白名单过滤
 	fmt.Println("[aliyun_to_115] 开始通过fs.List遍历文件...")
-	d.fsWalkAndSync(ctx, "/", stats, breakpointPath, &fullScan, db2)
+	d.fsWalkAndSync(ctx, "/每日更新/动漫/国漫/所有", stats, breakpointPath, &fullScan, db2)
 
 	clearBreakpoint(db2)
 
@@ -357,7 +357,7 @@ func getRealProvider(ctx context.Context, itemPath string) string {
 	}
 
 	if s.Driver != "Alias" {
-		return "HHH"//s.Driver
+		return s.Driver
 	}
 
 	var addition AliasAddition
@@ -368,6 +368,10 @@ func getRealProvider(ctx context.Context, itemPath string) string {
 	relPath := strings.TrimPrefix(itemPath, s.MountPath)
 	if !strings.HasPrefix(relPath, "/") {
 		relPath = "/" + relPath
+	}
+
+	if realPath == "/" {
+		return "Alias"
 	}
 
 	targetPaths := strings.Split(addition.Paths, "\n")

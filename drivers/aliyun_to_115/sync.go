@@ -1005,7 +1005,7 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 	}
 	d.syncLoopMu.Unlock()
 
-	link, err := aliyun.Link(ctx, f, model.LinkArgs{})
+	link, err := aliyun.Link(ctx, realFile, model.LinkArgs{})
 	// 兼容某些驱动可能重新获取一次 Hash
 	if driver, ok := aliyun.(*aliyundrive_share2open.AliyundriveShare2Open); ok {
 		sha1Str = driver.GetHash(ctx, realFile, model.LinkArgs{})

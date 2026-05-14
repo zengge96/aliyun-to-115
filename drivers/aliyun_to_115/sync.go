@@ -347,6 +347,10 @@ func (d *AliyunTo115) fsWalkAndSync(ctx context.Context, currentPath string, sta
 		return err
 	}
 
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].GetName() < files[j].GetName()
+	})
+
 	for _, f := range files {
 		provider, _ := model.GetProvider(f)
 		inWhiteList := false

@@ -350,13 +350,92 @@ func getPair(spath string) (string, string) {
 }
 
 func getRealProvider(ctx context.Context, itemPath string) string {
-	_, file, err := getRealDriverAndFile(ctx, itemPath)
-	if err == nil && file != nil {
-		provider, _ := model.GetProvider(file)
-		return provider
-	} else {
+	drv, err := fs.GetStorage(itemPath, &fs.GetStoragesArgs{})
+	if err != nil || drv == nil || drv.GetStorage() == nil {
 		return "unknown"
 	}
+
+	s := drv.GetStorage()
+	// 如果当前已经是具体的存储驱动（非Alias），直接返回
+	if s.Driver != "Alias" {
+		return s.Driver
+	}
+
+	// 1. 获取并解析 Addition 配置
+	type AliasAddition struct {
+		Paths string `json:"paths"`
+	}
+	var addition AliasAddition
+	if err := json.Unmarshal([]byte(s.Addition), &addition); err != nil {
+		return "Alias"
+	}
+
+	// 2. 模拟 Init 逻辑：构建映射表
+	// 逻辑对齐：将 Paths 解析为 pathMap 和 rootOrder
+	pathMap := make(map[string][]string)
+	var rootOrder []string
+	
+	lines := strings.Split(addition.Paths, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		k, v := getPair(line)
+		if _, ok := pathMap[k]; !ok {
+			rootOrder = append(rootOrder, k)
+		}
+		pathMap[k] = append(pathMap[k], v)
+	}
+
+	// 3. 计算相对路径
+	relPath := strings.TrimPrefix(itemPath, s.MountPath)
+	if !strings.HasPrefix(relPath, "/") {
+		relPath = "/" + relPath
+	}
+
+	if relPath == "/" {
+		return "Alias"
+	}
+
+	// 4. 根据 rootOrder 的长度执行不同的查找逻辑 (对齐 Init 的 switch 逻辑)
+	switch len(rootOrder) {
+	case 0:
+		return "Alias"
+		
+	case 1:
+		// case 1: 单一根节点合并模式 (Union)
+		// 所有路径都映射到了同一个根别名下
+		targets := pathMap[rootOrder[0]]
+		for _, target := range targets {
+			// 在合并模式下，relPath 是相对于 Alias 根的
+			realPath := strings.TrimSuffix(target, "/") + relPath
+			_, err := fs.Get(ctx, realPath, &fs.GetArgs{NoLog: true})
+			if err == nil {
+				// 递归探测，确保钻取到最底层
+				return getRealProvider(ctx, realPath)
+			}
+		}
+
+	default:
+		// default: 多根节点模式
+		// 必须匹配前缀才能定位到对应的物理路径
+		for _, prefix := range rootOrder {
+			if strings.HasPrefix(relPath, prefix) {
+				targets := pathMap[prefix]
+				subPath := strings.TrimPrefix(relPath, prefix)
+				for _, target := range targets {
+					realPath := strings.TrimSuffix(target, "/") + "/" + strings.TrimPrefix(subPath, "/")
+					_, err := fs.Get(ctx, realPath, &fs.GetArgs{NoLog: true})
+					if err == nil {
+						return getRealProvider(ctx, realPath)
+					}
+				}
+			}
+		}
+	}
+
+	return "Alias"
 }
 
 func getRealDriverAndFile(ctx context.Context, itemPath string) (driver.Driver, model.Obj, error) {

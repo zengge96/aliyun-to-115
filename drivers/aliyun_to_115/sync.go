@@ -355,29 +355,36 @@ func getRealProvider(ctx context.Context, itemPath string) string {
 	}
 
 	s := drv.GetStorage()
+	// 如果当前已经是具体的存储驱动（非Alias），直接返回
 	if s.Driver != "Alias" {
 		return s.Driver
 	}
 
 	// 1. 获取并解析 Addition 配置
-	type Addition struct {
+	type AliasAddition struct {
 		Paths string `json:"paths"`
 	}
-	var add Addition
-	if err := json.Unmarshal([]byte(s.Addition), &add); err != nil {
+	var addition AliasAddition
+	if err := json.Unmarshal([]byte(s.Addition), &addition); err != nil {
 		return "Alias"
 	}
 
-	// 2. 模拟 Init 逻辑：解析路径映射 (保持逻辑一致)
-	// 我们需要将配置的路径拆解为 map[前缀][]真实路径
+	// 2. 模拟 Init 逻辑：构建映射表
+	// 逻辑对齐：将 Paths 解析为 pathMap 和 rootOrder
 	pathMap := make(map[string][]string)
-	for _, line := range strings.Split(add.Paths, "\n") {
+	var rootOrder []string
+	
+	lines := strings.Split(addition.Paths, "\n")
+	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
-		// 假设 getPair 逻辑是：k 为别名/前缀，v 为路径
-		k, v := getPair(line) 
+		// 调用你项目中的 getPair
+		k, v := getPair(line)
+		if _, ok := pathMap[k]; !ok {
+			rootOrder = append(rootOrder, k)
+		}
 		pathMap[k] = append(pathMap[k], v)
 	}
 
@@ -386,27 +393,39 @@ func getRealProvider(ctx context.Context, itemPath string) string {
 	if !strings.HasPrefix(relPath, "/") {
 		relPath = "/" + relPath
 	}
-	if relPath == "/" {
-		return "Alias"
-	}
 
-	// 4. 路径探测逻辑
-	// 遍历 pathMap 寻找匹配的逻辑分支
-	for prefix, targets := range pathMap {
-		// 如果 relPath 属于这个分支 (例如 relPath 为 /music/a.mp3, prefix 为 /music)
-		if strings.HasPrefix(relPath, prefix) {
-			subPath := strings.TrimPrefix(relPath, prefix)
-			
-			for _, target := range targets {
-				// 拼接出完整的物理路径
-				// 这里处理了路径拼接的斜杠问题
-				realPath := strings.TrimSuffix(target, "/") + "/" + strings.TrimPrefix(subPath, "/")
-				
-				// 探测该路径是否存在
-				_, err := fs.Get(ctx, realPath, &fs.GetArgs{NoLog: true})
-				if err == nil {
-					// 递归调用：如果下一层依然是 Alias，会自动进入下一轮循环
-					return getRealProvider(ctx, realPath)
+	// 4. 根据 rootOrder 的长度执行不同的查找逻辑 (对齐 Init 的 switch 逻辑)
+	switch len(rootOrder) {
+	case 0:
+		return "Alias"
+		
+	case 1:
+		// case 1: 单一根节点合并模式 (Union)
+		// 所有路径都映射到了同一个根别名下
+		targets := pathMap[rootOrder[0]]
+		for _, target := range targets {
+			// 在合并模式下，relPath 是相对于 Alias 根的
+			realPath := strings.TrimSuffix(target, "/") + relPath
+			_, err := fs.Get(ctx, realPath, &fs.GetArgs{NoLog: true})
+			if err == nil {
+				// 递归探测，确保钻取到最底层
+				return getRealProvider(ctx, realPath)
+			}
+		}
+
+	default:
+		// default: 多根节点模式
+		// 必须匹配前缀才能定位到对应的物理路径
+		for _, prefix := range rootOrder {
+			if strings.HasPrefix(relPath, prefix) {
+				targets := pathMap[prefix]
+				subPath := strings.TrimPrefix(relPath, prefix)
+				for _, target := range targets {
+					realPath := strings.TrimSuffix(target, "/") + "/" + strings.TrimPrefix(subPath, "/")
+					_, err := fs.Get(ctx, realPath, &fs.GetArgs{NoLog: true})
+					if err == nil {
+						return getRealProvider(ctx, realPath)
+					}
 				}
 			}
 		}

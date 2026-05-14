@@ -340,26 +340,35 @@ func (d *AliyunTo115) doSync() {
 	return
 }
 
+type AliasAddition struct {
+	Paths string `json:"paths"`
+}
+
 func getRealProvider(ctx context.Context, itemPath string) string {
-	storage, err := fs.GetStorage(itemPath, &fs.GetStoragesArgs{})
-	if err != nil || storage == nil {
+	drv, err := fs.GetStorage(itemPath, &fs.GetStoragesArgs{})
+	if err != nil || drv == nil {
+		return "unknown"
+	}
+
+	s := drv.GetStorage()
+	if s == nil {
 		return "unknown"
 	}
 
 	// 1. 如果不是 Alias，直接返回当前的驱动名（如 AliyundriveShare2Open, 115 等）
-	if storage.Driver != "Alias" {
-		return storage.Driver
+	if s.Driver != "Alias" {
+		return s.Driver
 	}
 
 	// 2. 如果是 Alias，提取其数据库中配置的目标路径 (Addition 字段存的是 JSON)
 	var addition AliasAddition
-	if err := json.Unmarshal([]byte(storage.Addition), &addition); err != nil {
+	if err := json.Unmarshal([]byte(s.Addition), &addition); err != nil {
 		return "Alias" // 解析失败，退化为返回 Alias
 	}
 
 	// 获取相对于 Alias 挂载点的子路径
 	// 比如: itemPath="/聚合盘/照片/1.jpg", MountPath="/聚合盘" => relPath="/照片/1.jpg"
-	relPath := strings.TrimPrefix(itemPath, storage.MountPath)
+	relPath := strings.TrimPrefix(itemPath, s.MountPath)
 	if !strings.HasPrefix(relPath, "/") {
 		relPath = "/" + relPath
 	}

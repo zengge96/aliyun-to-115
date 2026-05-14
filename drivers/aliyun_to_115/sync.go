@@ -79,7 +79,8 @@ var (
 var providerWhiteList = []string{
 	"AliyundriveOpen",
 	"AliyundriveShare2Open",
-	"Pan115Share",
+	"115 Share",
+	"115 Cloud",
 }
 
 type syncStats struct {

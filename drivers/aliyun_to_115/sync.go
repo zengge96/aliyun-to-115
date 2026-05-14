@@ -394,6 +394,10 @@ func getRealProvider(ctx context.Context, itemPath string) string {
 		relPath = "/" + relPath
 	}
 
+	if relPath == "/" {
+		return "Alias"
+	}
+
 	// 4. 根据 rootOrder 的长度执行不同的查找逻辑 (对齐 Init 的 switch 逻辑)
 	switch len(rootOrder) {
 	case 0:

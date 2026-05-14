@@ -352,7 +352,7 @@ func getRealProvider(ctx context.Context, itemPath string) string {
 	}
 
 	// 2. 如果是 Alias，提取其数据库中配置的目标路径 (Addition 字段存的是 JSON)
-	var addition Addition
+	var addition AliasAddition
 	if err := json.Unmarshal([]byte(storage.Addition), &addition); err != nil {
 		return "Alias" // 解析失败，退化为返回 Alias
 	}

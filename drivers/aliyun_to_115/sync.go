@@ -383,7 +383,7 @@ func getRealProvider(ctx context.Context, itemPath string) string {
 
 		realPath := strings.TrimSuffix(target, "/") + relPath
 
-		fmt.Printf("realPath:%s", realPath)
+		fmt.Printf("realPath:%s\n", realPath)
 
 		_, err := fs.Get(ctx, realPath, &fs.GetArgs{NoLog: true}) 
 		if err == nil {

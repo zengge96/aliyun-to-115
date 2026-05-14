@@ -439,18 +439,22 @@ func getRealProvider(ctx context.Context, itemPath string) string {
 }
 
 func getRealDriverAndFile(ctx context.Context, itemPath string) (driver.Driver, model.Obj, error) {
+	fmt.Printf("\n[DEBUG] ========== ENTER getRealDriverAndFile ==========\n")
+	fmt.Printf("[DEBUG] Requested itemPath: '%s'\n", itemPath)
+
 	drv, err := fs.GetStorage(itemPath, &fs.GetStoragesArgs{})
 	if err != nil || drv == nil || drv.GetStorage() == nil {
-		// 修正：遇到严重错误时，返回 nil 和 error，而不是字符串
+		fmt.Printf("[ERROR] GetStorage failed. err: %v, drv is nil: %v\n", err, drv == nil)
 		return nil, nil, fmt.Errorf("storage not found for path %s: %w", itemPath, err)
 	}
 
 	s := drv.GetStorage()
-	
+	fmt.Printf("[DEBUG] Storage found. MountPath: '%s', Driver: '%s'\n", s.MountPath, s.Driver)
+
 	// 如果当前已经是具体的存储驱动（非Alias），直接返回
 	if s.Driver != "Alias" {
+		fmt.Printf("[DEBUG] Not an Alias driver. Returning directly.\n")
 		file, err := fs.Get(ctx, itemPath, &fs.GetArgs{NoLog: true})
-		// 修正：返回 drv (driver.Driver) 而不是 s (*model.Storage)
 		return drv, file, err
 	}
 
@@ -460,6 +464,7 @@ func getRealDriverAndFile(ctx context.Context, itemPath string) (driver.Driver, 
 	}
 	var addition AliasAddition
 	if err := json.Unmarshal([]byte(s.Addition), &addition); err != nil {
+		fmt.Printf("[ERROR] Unmarshal Addition failed: %v. Fallback to default Alias.\n", err)
 		// 解析失败兜底：作为普通的 Alias 目录返回
 		file, err := fs.Get(ctx, itemPath, &fs.GetArgs{NoLog: true})
 		return drv, file, err
@@ -481,39 +486,51 @@ func getRealDriverAndFile(ctx context.Context, itemPath string) (driver.Driver, 
 		}
 		pathMap[k] = append(pathMap[k], v)
 	}
+	fmt.Printf("[DEBUG] Parsed Config -> rootOrder: %v, pathMap: %v\n", rootOrder, pathMap)
 
 	// 3. 计算相对路径
 	relPath := strings.TrimPrefix(itemPath, s.MountPath)
 	if !strings.HasPrefix(relPath, "/") {
 		relPath = "/" + relPath
 	}
+	fmt.Printf("[DEBUG] Calculated relPath: '%s'\n", relPath)
 
 	// 如果访问的是 Alias 根目录本身，它没有真实的单一映射驱动，直接作为 Alias 返回
 	if relPath == "/" {
+		fmt.Printf("[DEBUG] Requesting Alias root ('/'). Returning Alias directly.\n")
 		file, err := fs.Get(ctx, itemPath, &fs.GetArgs{NoLog: true})
 		return drv, file, err
 	}
 
 	// 4. 根据 rootOrder 的长度执行不同的查找逻辑
+	fmt.Printf("[DEBUG] Switch by rootOrder length: %d\n", len(rootOrder))
 	switch len(rootOrder) {
 	case 0:
+		fmt.Printf("[DEBUG] Case 0: Empty Config. Fallback to default Alias.\n")
 		// 配置为空兜底
 		file, err := fs.Get(ctx, itemPath, &fs.GetArgs{NoLog: true})
 		return drv, file, err
 
 	case 1:
+		fmt.Printf("[DEBUG] Case 1: Union Mode. Root prefix: '%s'\n", rootOrder[0])
 		// 单一根节点合并模式 (Union)
 		targets := pathMap[rootOrder[0]]
-		for _, target := range targets {
+		for i, target := range targets {
 			realPath := strings.TrimSuffix(target, "/") + relPath
+			fmt.Printf("[DEBUG]   [Union target %d] Checking mapped realPath: '%s'\n", i, realPath)
+			
 			_, err := fs.Get(ctx, realPath, &fs.GetArgs{NoLog: true})
 			if err == nil {
+				fmt.Printf("[DEBUG]   -> SUCCESS! File found at '%s'. Going recursive...\n", realPath)
 				// 递归探测，确保钻取到最底层
 				return getRealDriverAndFile(ctx, realPath)
+			} else {
+				fmt.Printf("[DEBUG]   -> Failed. File not found at '%s', err: %v\n", realPath, err)
 			}
 		}
 
 	default:
+		fmt.Printf("[DEBUG] Default Case: Multi-root Mode.\n")
 		// 多根节点模式
 		for _, prefix := range rootOrder {
 			// 为了防止 /a 匹配到 /ab 的情况，建议确保前缀带有路径边界符号
@@ -522,27 +539,37 @@ func getRealDriverAndFile(ctx context.Context, itemPath string) (driver.Driver, 
 				prefixMatch = "/" + prefixMatch
 			}
 
+			fmt.Printf("[DEBUG]   Checking if relPath ('%s') matches prefix ('%s') or starts with ('%s/')\n", relPath, prefixMatch, prefixMatch)
+			
 			// 精确匹配目录前缀
-			if relPath == prefixMatch || strings.HasPrefix(relPath, prefixMatch + "/") {
+			if relPath == prefixMatch || strings.HasPrefix(relPath, prefixMatch+"/") {
 				targets := pathMap[prefix]
 				subPath := strings.TrimPrefix(relPath, prefixMatch)
-				
-				for _, target := range targets {
+				fmt.Printf("[DEBUG]   -> MATCHED Prefix! subPath calculated as: '%s'\n", subPath)
+
+				for i, target := range targets {
 					realPath := strings.TrimSuffix(target, "/")
 					if subPath != "" && subPath != "/" {
 						realPath += "/" + strings.TrimPrefix(subPath, "/")
 					}
+					
+					fmt.Printf("[DEBUG]     [Multi-root target %d] Checking mapped realPath: '%s'\n", i, realPath)
 
 					_, err := fs.Get(ctx, realPath, &fs.GetArgs{NoLog: true})
 					if err == nil {
+						fmt.Printf("[DEBUG]     -> SUCCESS! File found at '%s'. Going recursive...\n", realPath)
 						return getRealDriverAndFile(ctx, realPath)
+					} else {
+						fmt.Printf("[DEBUG]     -> Failed. File not found at '%s', err: %v\n", realPath, err)
 					}
 				}
 			}
 		}
 	}
 
-	// 5. 最终兜底：如果遍历完都没有找到对应的物理文件，则当做普通的 Alias 对象返回（可能是404，由外层处理）
+	// 5. 最终兜底
+	fmt.Printf("[DEBUG] ========== FALLBACK ========== \n")
+	fmt.Printf("[DEBUG] All attempts failed. Returning standard Alias obj for '%s'\n", itemPath)
 	file, err := fs.Get(ctx, itemPath, &fs.GetArgs{NoLog: true})
 	return drv, file, err
 }

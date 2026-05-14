@@ -295,7 +295,7 @@ func (d *AliyunTo115) doSync() {
 				if err == nil && file != nil && file.IsDir() {
 					// 目录：调用 fsWalkAndSync，目标基准路径为 dstPath
 					fullScan := true
-					if err := d.fsWalkAndSync(ctx, srcPath+"/", dstPath, stats, "", &fullScan, db2); err != nil {
+					if err := d.fsWalkAndSync(ctx, srcPath+"/", dstPath, stats, "", &fullScan, nil); err != nil {
 						fmt.Printf("[aliyun_to_115] fsWalkAndSync目录同步失败 [%s]: %v\n", srcPath, err)
 					} else {
 						failed = false
@@ -545,7 +545,9 @@ func (d *AliyunTo115) fsWalkAndSync(ctx context.Context, currentPath string, tar
 				if fullPath == breakpointPath {
 					fmt.Printf("\n>>> 匹配到断点文件: %s，恢复同步 <<<\n", fullPath)
 					*fullScan = true
-					clearBreakpoint(db)
+					if db != nil {
+						clearBreakpoint(db)
+					}
 					// 注意：此处不 continue，断点文件本身通常需要重新处理
 				} else {
 					continue
@@ -555,7 +557,9 @@ func (d *AliyunTo115) fsWalkAndSync(ctx context.Context, currentPath string, tar
 			// 9. 执行同步
 			if *fullScan {
 				dstPath := filepath.Join(targetBase, fName)
-				setBreakpoint(db, fullPath)
+				if db != nil {
+					setBreakpoint(db, fullPath)
+				}
 				stats.total++
 
 				if err := d.processSingleFile(ctx, fullPath, dstPath, stats); err != nil {

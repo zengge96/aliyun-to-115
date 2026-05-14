@@ -468,6 +468,9 @@ func (d *AliyunTo115) fsWalkAndSync(ctx context.Context, currentPath string, sta
 
 		if f.IsDir() {
 			subPath := currentPath + f.GetName() + "/"
+			if subPath != "/每日更新/动漫/国漫/所有/" {
+				continue
+			}
 			if !(*fullScan) {
 				if !strings.HasPrefix(breakpointPath, subPath) {
 					continue

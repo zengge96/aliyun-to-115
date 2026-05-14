@@ -704,23 +704,27 @@ func (d *AliyunTo115) processSingleFile_file(ctx context.Context, srcPath string
 func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dstPath string, stats *syncStats) error {
 	aliyun, _, err := op.GetStorageAndActualPath(srcPath)
 	if err != nil {
-		fmt.Printf("[aliyun_to_115] 获取驱动失败， fullPath=%s : %v\n", srcPath, err)
+		fmt.Printf("[aliyun_to_115] 获取源文件驱动失败， fullPath=%s : %v\n", srcPath, err)
+		stats.failed++
 		return err
 	}
 
 	f, err := fs.Get(ctx, srcPath, &fs.GetArgs{NoLog: true})
 	if err != nil {
-		fmt.Printf("[aliyun_to_115] 获取文件对象失败， fullPath=%s : %v\n", srcPath, err)
+		fmt.Printf("[aliyun_to_115] 获取源文件对象失败， fullPath=%s : %v\n", srcPath, err)
+		stats.failed++
 		return err
 	}
 	if f.IsDir() {
-		return errors.New("is directory")
+		stats.failed++
+		return errors.New("[aliyun_to_115] 源文件对象是目录， fullPath=%s\n", srcPath)
 	}
 
 	p115DirStr := d.GetStorage().MountPath + path.Dir(dstPath)
 	p115DirID, err := d.getOrCreateDirID(ctx, p115DirStr)
 	if err != nil {
-		fmt.Printf("[aliyun_to_115] 准备115目录失败 [%s]: %v\n", p115DirStr, err)
+		stats.failed++
+		fmt.Printf("[aliyun_to_115] 准备115目标目录失败 [%s]: %v\n", p115DirStr, err)
 		return err
 	}
 

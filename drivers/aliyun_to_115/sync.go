@@ -86,6 +86,17 @@ type syncStats struct {
 	normal  int64
 }
 
+func initDBBreakpoint(db *sql.DB) {
+	createTableSQL := `CREATE TABLE IF NOT EXISTS sync_state (
+		key TEXT PRIMARY KEY,
+		value TEXT
+	);`
+	_, err := db.Exec(createTableSQL)
+	if err != nil {
+		fmt.Printf("创建断点数据表失败: %v", err)
+	}
+}
+
 func getBreakpoint(db *sql.DB) string {
 	var val string
 	err := db.QueryRow("SELECT value FROM sync_state WHERE key = 'breakpoint'").Scan(&val)
@@ -159,6 +170,7 @@ func (d *AliyunTo115) doSync() {
 		configRootID = "0"
 	}
 
+	strmDBFile := filepath.Join(d.basePath, "data", "work.db")
 	db2, err := sql.Open("sqlite3", strmDBFile)
 	if err != nil {
 		fmt.Printf("[aliyun_to_115] 打开work.db失败: %v\n", err)
@@ -168,8 +180,6 @@ func (d *AliyunTo115) doSync() {
 
 	// ========== strm.txt 模式检测（SQLite） ==========
 	strmFile := filepath.Join(d.basePath, "strm.txt")
-	strmDBFile := filepath.Join(d.basePath, "data", "work.db")
-
 	if _, err := os.Stat(strmFile); err == nil {
 		// strm.txt 存在，切换为文件同步模式
 
@@ -297,11 +307,8 @@ func (d *AliyunTo115) doSync() {
 	}
 
 	// ========== 驱动遍历模式 ==========
-	createTableSQL := `CREATE TABLE IF NOT EXISTS sync_state (
-		key TEXT PRIMARY KEY,
-		value TEXT
-	);`
-	
+	initDBBreakpoint(db2)
+
 	breakpointPath := getBreakpoint(db2)
 	fullScan := false
 	if breakpointPath == "" {

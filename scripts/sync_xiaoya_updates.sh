@@ -487,7 +487,7 @@ do
     
     "$OPENLIST_BIN" server
     
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] 进程已退出，将在 3 秒后重启..."
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] 进程已退出，将在 10 分钟后重启..."
 
     sleep 600
 done

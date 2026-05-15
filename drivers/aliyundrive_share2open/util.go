@@ -82,7 +82,12 @@ func (d *AliyundriveShare2Open) refreshToken() error {
 	if e.Code != "" {
 		return fmt.Errorf("failed to refresh token: %s", e.Message)
 	}
+
 	d.RefreshToken, d.AccessToken = resp.RefreshToken, resp.AccessToken
+	tokenMutex.Lock()
+	AliRefreshToken, AliAccessToken = resp.RefreshToken, resp.AccessToken
+	tokenMutex.Unlock()
+
 	op.MustSaveDriverStorage(d)
 	return nil
 }
@@ -288,17 +293,19 @@ func (d *AliyundriveShare2Open) refreshTokenOpen(ctx context.Context) error {
 	d.RefreshTokenOpen, d.AccessTokenOpen = refresh, access
 	tokenMutex.Lock()
 	AliOpenRefreshToken, AliOpenAccessToken = refresh, access
-	tokenMutex.Lock()
+	tokenMutex.Unlock()
 	op.MustSaveDriverStorage(d)
 	return nil
 }
 
 func (d *AliyundriveShare2Open) requestOpen(ctx context.Context, uri, method string, callback base.ReqCallback, retry ...bool) ([]byte, error) {
 	// 优先使用全局共享 token（其他实例刷新的），其次用实例自己的
+	tokenMutex.Lock()
 	tokenToUse := AliOpenAccessToken
 	if tokenToUse == "" {
 		tokenToUse = d.AccessTokenOpen
 	}
+	tokenMutex.Unlock()
 	req := base.RestyClient.R()
 	req.SetHeader("Authorization", "Bearer " + tokenToUse)
 	if method == http.MethodPost {

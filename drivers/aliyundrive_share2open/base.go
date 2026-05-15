@@ -5,6 +5,8 @@ import "sync"
 // Global alist-style token storage (aliyundrive_share2open driver needs these)
 var AliOpenAccessToken string
 var AliOpenRefreshToken string
+var	AliRefreshToken     string
+var	AliAccessToken      string
 
 // Global mutex to serialize token refresh across all instances (reduces API risk control)
 var tokenMutex sync.Mutex

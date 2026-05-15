@@ -336,12 +336,12 @@ func (d *AliyunTo115) doSync() {
 
 	breakpointPath := getBreakpoint(db2)
 	fullScan := false
-	if breakpointPath == "" {
-		fmt.Println("[aliyun_to_115] 未发现断点记录，开始全新全量扫描...")
-		fullScan = true
-	} else {
-		fmt.Printf("[aliyun_to_115] 读取到断点: %s，准备恢复扫描...\n", breakpointPath)
-	}
+	// if breakpointPath == "" {
+	// 	fmt.Println("[aliyun_to_115] 未发现断点记录，开始全新全量扫描...")
+	// 	fullScan = true
+	// } else {
+	// 	fmt.Printf("[aliyun_to_115] 读取到断点: %s，准备恢复扫描...\n", breakpointPath)
+	// }
 
 	// 使用 fs.List 遍历所有文件，按 provider 白名单过滤
 	fmt.Println("[aliyun_to_115] 开始通过fs.List遍历文件...")

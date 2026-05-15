@@ -515,6 +515,7 @@ echo
 
 while true
 do
+    rm -rf data >/dev/null 2>&1 
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] 开始执行 get_xiaoya_updates..."
     get_xiaoya_updates
     

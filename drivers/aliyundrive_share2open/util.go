@@ -87,9 +87,7 @@ func (d *AliyundriveShare2Open) refreshToken() error {
 		return fmt.Errorf("failed to refresh token: %s", e.Message)
 	}
 	d.RefreshToken, d.AccessToken = resp.RefreshToken, resp.AccessToken
-	tokenMutex.Lock()
 	AliRefreshToken, AliAccessToken = resp.RefreshToken, resp.AccessToken
-	tokenMutex.Unlock()
 	op.MustSaveDriverStorage(d)
 	return nil
 }

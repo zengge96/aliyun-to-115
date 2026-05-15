@@ -362,6 +362,7 @@ func (d *AliyunTo115) doSync() {
 	fmt.Printf("[aliyun_to_115] ===== 同步完成: 跳过%v / 秒传%v / 正常%v / 失败%v =====\n",
 		stats.skipped, stats.rapid, stats.normal, stats.failed)
 
+	d.userInt = false
 	if d.RunOnce {
 		selfTerminate()
 	}

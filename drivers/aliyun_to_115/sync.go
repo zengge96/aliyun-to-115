@@ -189,6 +189,8 @@ func (d *AliyunTo115) doSync() {
 	}
 	defer db2.Close()
 
+	initDBBreakpoint(db2)
+
 	// ========== strm.txt 模式检测（SQLite） ==========
 	strmFile := filepath.Join(d.basePath, "strm.txt")
 	if _, err := os.Stat(strmFile); err == nil {
@@ -295,10 +297,12 @@ func (d *AliyunTo115) doSync() {
 				if err == nil && file != nil && file.IsDir() {
 					// 目录：调用 fsWalkAndSync，目标基准路径为 dstPath
 					fullScan := true
-					if err := d.fsWalkAndSync(ctx, srcPath+"/", dstPath, stats, "", &fullScan, nil); err != nil {
+					breakpointPath := getBreakpoint(db2)
+					if err := d.fsWalkAndSync(ctx, srcPath + "/", dstPath, stats, breakpointPath, &fullScan, db2); err != nil {
 						fmt.Printf("[aliyun_to_115] fsWalkAndSync目录同步失败 [%s]: %v\n", srcPath, err)
 					} else {
 						failed = false
+						clearBreakpoint(db2)
 					}
 				} else {
 					// 文件：走原有 processSingleFile 流程
@@ -309,7 +313,7 @@ func (d *AliyunTo115) doSync() {
 			}
 			
 			if failed {
-				failedLine := fmt.Sprintf("%s#%s\n", srcPath, dstPath)
+				failedLine := fmt.Sprintf("%s#%s\n", dstPath, srcPath)
 				if f, err := os.OpenFile("./failed.txt", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
 					f.WriteString(failedLine)
 					f.Close()
@@ -329,7 +333,6 @@ func (d *AliyunTo115) doSync() {
 
 	// ========== 驱动遍历模式 ==========
 	d.discoverAliyunStorages()
-	initDBBreakpoint(db2)
 
 	breakpointPath := getBreakpoint(db2)
 	fullScan := false
@@ -342,9 +345,11 @@ func (d *AliyunTo115) doSync() {
 
 	// 使用 fs.List 遍历所有文件，按 provider 白名单过滤
 	fmt.Println("[aliyun_to_115] 开始通过fs.List遍历文件...")
-	d.fsWalkAndSync(ctx, "/", "/", stats, breakpointPath, &fullScan, db2)
+	
 
-	clearBreakpoint(db2)
+	if err := d.fsWalkAndSync(ctx, "/", "/", stats, breakpointPath, &fullScan, db2); err != nil {
+		clearBreakpoint(db2)
+	}
 
 	fmt.Printf("[aliyun_to_115] ===== 同步完成: 跳过%v / 秒传%v / 正常%v / 失败%v =====\n",
 		stats.skipped, stats.rapid, stats.normal, stats.failed)
@@ -503,7 +508,7 @@ func (d *AliyunTo115) fsWalkAndSync(ctx context.Context, currentPath string, tar
 		return fmt.Errorf("list %s failed: %w", currentPath, err)
 	}
 
-	// 4. 排序以确保断点恢复的逻辑顺序一致
+	// 4. 排序以确保断点恢复的逻辑顺序一致 (字典序)
 	sort.Slice(files, func(i, j int) bool {
 		return files[i].GetName() < files[j].GetName()
 	})
@@ -525,46 +530,64 @@ func (d *AliyunTo115) fsWalkAndSync(ctx context.Context, currentPath string, tar
 			continue
 		}
 
+		// 为目录路径加上尾部斜杠，用于准确的前缀判断
+		subPath := fullPath
 		if f.IsDir() {
-			subPath := fullPath + "/"
-			// 6. 目录断点判定：如果不在全量扫描模式，且断点不在该目录下，则跳过
-			if !(*fullScan) {
-				if !strings.HasPrefix(breakpointPath, subPath) {
+			subPath += "/"
+		}
+
+		// 6. 统一断点判定逻辑 (包含：精准命中、进入前缀、断点被删顺延)
+		if !(*fullScan) {
+			// 为了比较的准确性，统一去除尾部 "/" 后进行比较
+			cleanFullPath := strings.TrimRight(fullPath, "/")
+			cleanBreakpoint := strings.TrimRight(breakpointPath, "/")
+
+			if cleanFullPath == cleanBreakpoint {
+				// 场景 A: 精准匹配到了断点文件或断点目录
+				fmt.Printf("\n>>> 匹配到断点: %s，恢复同步 <<<\n", fullPath)
+				*fullScan = true
+				// if db != nil {
+				// 	clearBreakpoint(db)
+				// }
+			} else if f.IsDir() && strings.HasPrefix(breakpointPath, subPath) {
+				// 场景 B: 当前是目录，且断点在该目录内部（前缀匹配），允许进入
+				// 这里什么也不做，让程序自然走到下面的 f.IsDir() 递归中
+			} else {
+				// 场景 C: 既没命中，也不是包含断点的目录
+				// 由于列表是按字典序排列的，如果当前路径在字典序上大于断点，
+				// 说明断点（文件或整个父目录）已经被删除了，我们直接从当前项开始接续同步。
+				if cleanFullPath > cleanBreakpoint {
+					fmt.Printf("\n>>> 断点 [%s] 已不存在(被删除)，按顺序从 [%s] 接续恢复同步 <<<\n", breakpointPath, fullPath)
+					*fullScan = true
+					// if db != nil {
+					// 	clearBreakpoint(db)
+					// }
+				} else {
+					// 如果小于断点，说明还没遍历到目标位置，继续跳过
 					continue
 				}
 			}
+		}
 
-			// 7. 递归调用，并保持目标路径层级同步
+		// 7. 根据类型执行操作
+		if f.IsDir() {
+			// 递归调用，并保持目标路径层级同步
 			subTargetBase := filepath.Join(targetBase, fName)
 			if err := d.fsWalkAndSync(ctx, subPath, subTargetBase, stats, breakpointPath, fullScan, db); err != nil {
 				return err
 			}
 		} else {
-			// 8. 文件断点判定
-			if !(*fullScan) {
-				if fullPath == breakpointPath {
-					fmt.Printf("\n>>> 匹配到断点文件: %s，恢复同步 <<<\n", fullPath)
-					*fullScan = true
-					if db != nil {
-						clearBreakpoint(db)
-					}
-					// 注意：此处不 continue，断点文件本身通常需要重新处理
-				} else {
-					continue
-				}
-			}
-
-			// 9. 执行同步
+			// 执行单文件同步
 			if *fullScan {
 				dstPath := filepath.Join(targetBase, fName)
 				if db != nil {
-					setBreakpoint(db, fullPath)
+					setBreakpoint(db, fullPath) // 更新最新的文件断点
 				}
 				stats.total++
 
 				if err := d.processSingleFile(ctx, fullPath, dstPath, stats); err != nil {
 					// 记录失败日志
-					failedLine := fmt.Sprintf("%s#%s\n", fullPath, dstPath)
+					failedLine := fmt.Sprintf("%s#%s\n", dstPath, fullPath)
 					if f, err := os.OpenFile("./failed.txt", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
 						f.WriteString(failedLine)
 						f.Close()
@@ -574,63 +597,6 @@ func (d *AliyunTo115) fsWalkAndSync(ctx context.Context, currentPath string, tar
 		}
 	}
 
-	return nil
-}
-
-func (d *AliyunTo115) walkAndSync(ctx context.Context, aliyun aliyunStorage, currentPath, aliParentID string, stats *syncStats, breakpointPath string, fullScan *bool, db *sql.DB) error {
-	if !strings.HasSuffix(currentPath, "/") {
-		currentPath += "/"
-	}
-
-	files, err := aliyun.List(ctx, &model.Object{ID: aliParentID}, model.ListArgs{})
-	if err != nil {
-		return err
-	}
-
-	sort.Slice(files, func(i, j int) bool {
-		return files[i].GetName() < files[j].GetName()
-	})
-
-	for _, f := range files {
-		if f.IsDir() {
-			subPath := currentPath + f.GetName() + "/"
-
-			if !(*fullScan) {
-				if !strings.HasPrefix(breakpointPath, subPath) {
-					continue 
-				}
-			}
-
-			_ = d.walkAndSync(ctx, aliyun, subPath, f.GetID(), stats, breakpointPath, fullScan, db)
-			
-		} else {
-			fullPath := currentPath + f.GetName()
-
-			if !(*fullScan) {
-				if fullPath == breakpointPath {
-					fmt.Printf("\n>>> 精确匹配到断点文件: %s <<<\n", fullPath)
-					fmt.Println(">>> 状态已切换，开始从此处恢复同步任务...")
-					time.Sleep(1 * time.Second)
-					*fullScan = true
-				} else {
-					continue 
-				}
-			}
-
-			if *fullScan {
-				setBreakpoint(db, fullPath) 
-				stats.total++
-
-				if err := d.processSingleFile(ctx, fullPath, fullPath, stats); err != nil {
-					failedLine := fmt.Sprintf("%s#%s\n", fullPath, fullPath)
-					if f, err := os.OpenFile("./failed.txt", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
-						f.WriteString(failedLine)
-						f.Close()
-					}	
-				}
-			}
-		}
-	}
 	return nil
 }
 
@@ -993,131 +959,6 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 	}
 
 	stream := newUrlFileStreamer(path.Base(dstPath), fileSize, sha1Str, link.URL)
-
-	var result model.Obj
-	var uploadErr error
-	start := time.Now()
-	for attempt := 1; attempt <= 3; attempt++ {
-		result, uploadErr = d.p115Client.uploadTo115(ctx, stream, p115DirID)
-		if uploadErr == nil && result != nil {
-			break
-		}
-		if attempt < 3 {
-			time.Sleep(1 * time.Second)
-		}
-	}
-	elapsed := time.Since(start)
-
-	if uploadErr != nil || result == nil {
-		fmt.Printf("[aliyun_to_115] 上传失败: %s : %v\n", srcPath, uploadErr)
-		stats.failed++
-		return uploadErr
-	}
-
-	if stream.rapidUpload {
-		fmt.Printf("[aliyun_to_115] ⚡ 秒传成功: %s -> %s [%v]\n", srcPath, p115DirStr+"/"+path.Base(dstPath), elapsed)
-		stats.rapid++
-	} else {
-		fmt.Printf("[aliyun_to_115] 📤 正常上传: %s -> %s [%v]\n", srcPath, p115DirStr+"/"+path.Base(dstPath), elapsed)
-		stats.normal++
-	}
-
-	if d.DeleteAfterSync {
-		_ = d.p115Client.removeFrom115(ctx, result)
-	}
-
-	d.syncLoopMu.Lock()
-	d.syncedCache[cacheKey] = true
-	d.syncLoopMu.Unlock()
-	d.saveSyncedCache(cacheKey)
-	stats.synced++
-	return nil
-}
-
-func (d *AliyunTo115) _processSingleFile(ctx context.Context, srcPath string, dstPath string, stats *syncStats) error {
-	aliyun, _, err := op.GetStorageAndActualPath(srcPath)
-	if err != nil {
-		fmt.Printf("[aliyun_to_115] 获取源文件驱动失败， fullPath=%s : %v\n", srcPath, err)
-		return err
-		stats.failed++
-	}
-
-	f, err := fs.Get(ctx, srcPath, &fs.GetArgs{NoLog: true})
-	if err != nil {
-		fmt.Printf("[aliyun_to_115] 获取源文件对象失败， fullPath=%s : %v\n", srcPath, err)
-		stats.failed++
-		return err
-	}
-	if f.IsDir() {
-		stats.failed++
-		return fmt.Errorf("[aliyun_to_115] 源文件对象是目录， fullPath=%s", srcPath)
-	}
-
-	p115DirStr := d.GetStorage().MountPath + path.Dir(dstPath)
-	p115DirID, err := d.getOrCreateDirID(ctx, p115DirStr)
-	if err != nil {
-		stats.failed++
-		fmt.Printf("[aliyun_to_115] 准备115目标目录失败 [%s]: %v\n", p115DirStr, err)
-		return err
-	}
-
-	// 缓存逻辑
-	cacheKey := srcPath + "/" + f.GetID()
-	hashInfo := f.GetHash()
-	sha1Str := hashInfo.GetHash(utils.SHA1)
-	if sha1Str != "" {
-		cacheKey = srcPath + "/" + sha1Str
-	}
-
-	d.syncLoopMu.Lock()
-	if d.syncedCache[cacheKey] {
-		d.syncLoopMu.Unlock()
-		stats.skipped++
-		return nil
-	}
-	d.syncLoopMu.Unlock()
-
-	// 115 share 风控严重，等待 1 秒
-	if _, ok := aliyun.(*aliyundrive_share2open.AliyundriveShare2Open); ok {
-		time.Sleep(1 * time.Second)
-	}
-
-	link, err := aliyun.Link(ctx, f, model.LinkArgs{})
-	// 兼容某些驱动可能重新获取一次 Hash
-	if driver, ok := aliyun.(*aliyundrive_share2open.AliyundriveShare2Open); ok {
-		sha1Str = driver.GetHash(ctx, f, model.LinkArgs{})
-	}
-
-	if err != nil || link == nil || link.URL == "" {
-		stats.noLink++
-		return errors.New("no link")
-	}
-
-	// 规避115 Share List的Size错误
-	fileSize := f.GetSize()
-	provider, _ := model.GetProvider(f)
-	if provider == "115 Share" {
-		req, _ := http.NewRequestWithContext(ctx, http.MethodHead, link.URL, nil)
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			fmt.Printf("[aliyun_to_115] 115直链HEAD请求失败 [%s]: %v\n", srcPath, err)
-			return err
-		}
-		resp.Body.Close()
-		if resp.StatusCode != 200 {
-			fmt.Printf("[aliyun_to_115] 115直链HEAD请求非200 [%s]: status=%d\n", srcPath, resp.StatusCode)
-			return fmt.Errorf("HEAD status %d", resp.StatusCode)
-		}
-		fileSize = resp.ContentLength
-		if fileSize <= 0 {
-			fmt.Printf("[aliyun_to_115] 115直链无法获取文件大小 [%s]\n", srcPath)
-			return fmt.Errorf("content-length invalid")
-		}
-	}
-
-	stream := newUrlFileStreamer(path.Base(dstPath), fileSize, sha1Str, link.URL)
-
-	fmt.Printf("fileSize %d, sha1Str %s dstPath %s", fileSize, sha1Str, dstPath)
 
 	var result model.Obj
 	var uploadErr error

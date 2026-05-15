@@ -285,15 +285,10 @@ func (d *AliyundriveShare2Open) refreshTokenOpen(ctx context.Context) error {
 		return err
 	}
 	log.Infof("[ali_open] token exchange: %s -> %s", d.RefreshToken, refresh)
-	AliOpenRefreshToken, AliOpenAccessToken = refresh, access
 	d.RefreshTokenOpen, d.AccessTokenOpen = refresh, access
-	// 同步到全局共享 token，其他实例可以直接复用
+	tokenMutex.Lock()
 	AliOpenRefreshToken, AliOpenAccessToken = refresh, access
-	if AliOpenRefreshToken == refresh && AliOpenAccessToken == access {
-		log.Infof("[ali_open] token refreshed and synced globally: %s -> %s", d.RefreshTokenOpen[:8], refresh[:8])
-	} else {
-		log.Infof("[ali_open] token refreshed but superseded by another instance", d.RefreshTokenOpen[:8])
-	}
+	tokenMutex.Lock()
 	op.MustSaveDriverStorage(d)
 	return nil
 }
@@ -305,7 +300,7 @@ func (d *AliyundriveShare2Open) requestOpen(ctx context.Context, uri, method str
 		tokenToUse = d.AccessTokenOpen
 	}
 	req := base.RestyClient.R()
-	req.SetHeader("Authorization", "Bearer "+tokenToUse)
+	req.SetHeader("Authorization", "Bearer " + tokenToUse)
 	if method == http.MethodPost {
 		req.SetHeader("Content-Type", "application/json")
 	}
@@ -327,14 +322,11 @@ func (d *AliyundriveShare2Open) requestOpen(ctx context.Context, uri, method str
 				tokenMutex.Unlock()
 				return d.requestOpen(ctx, uri, method, callback, true)
 			}
-			AliOpenAccessToken = ""
 			err = d.refreshTokenOpen(ctx)
 			tokenMutex.Unlock()
 			if err != nil {
 				return nil, err
 			}
-			d.AccessTokenOpen = AliOpenAccessToken
-			d.RefreshTokenOpen = AliOpenRefreshToken
 			return d.requestOpen(ctx, uri, method, callback, true)
 		}
 		return nil, fmt.Errorf("%s:%s", e.Code, e.Message)

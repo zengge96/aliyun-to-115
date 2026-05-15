@@ -104,33 +104,36 @@ func initDBBreakpoint(db *sql.DB) {
 	);`
 	_, err := db.Exec(createTableSQL)
 	if err != nil {
-		fmt.Printf("创建断点数据表失败: %v", err)
+		fmt.Printf("创建断点数据表失败: %v\n", err)
 	}
 }
 
-func getBreakpoint(db *sql.DB) string {
+func getBreakpoint(db *sql.DB, name string) string {
+	key := fmt.Sprintf("breakpoint:%s", name)
 	var val string
-	err := db.QueryRow("SELECT value FROM sync_state WHERE key = 'breakpoint'").Scan(&val)
+	err := db.QueryRow("SELECT value FROM sync_state WHERE key = ?", key).Scan(&val)
 	if err != nil {
 		if err != sql.ErrNoRows {
-			fmt.Printf("读取断点失败: %v", err)
+			fmt.Printf("读取断点 [%s] 失败: %v\n", name, err)
 		}
 		return ""
 	}
 	return val
 }
 
-func setBreakpoint(db *sql.DB, path string) {
-	_, err := db.Exec("REPLACE INTO sync_state (key, value) VALUES ('breakpoint', ?)", path)
+func setBreakpoint(db *sql.DB, name string, path string) {
+	key := fmt.Sprintf("breakpoint:%s", name)
+	_, err := db.Exec("REPLACE INTO sync_state (key, value) VALUES (?, ?)", key, path)
 	if err != nil {
-		fmt.Printf("更新断点失败 [%s]: %v", path, err)
+		fmt.Printf("更新断点 [%s] 失败: %v\n", name, err)
 	}
 }
 
-func clearBreakpoint(db *sql.DB) {
-	_, err := db.Exec("DELETE FROM sync_state WHERE key = 'breakpoint'")
+func clearBreakpoint(db *sql.DB, name string) {
+	key := fmt.Sprintf("breakpoint:%s", name)
+	_, err := db.Exec("DELETE FROM sync_state WHERE key = ?", key)
 	if err != nil {
-		fmt.Printf("清空断点失败: %v", err)
+		fmt.Printf("清空断点 [%s] 失败: %v\n", name, err)
 	}
 }
 
@@ -295,19 +298,19 @@ func (d *AliyunTo115) doSync() {
 				// 检查是否为目录，如果是则调用 fsWalkAndSync 遍历
 				_, file, err := getRealDriverAndFile(ctx, srcPath)
 				if err == nil && file != nil && file.IsDir() {
-					
+
 					// 目录：调用 fsWalkAndSync，目标基准路径为 dstPath
 					fullScan := false
-					breakpointPath := getBreakpoint(db2)
+					breakpointPath := getBreakpoint(db2, line)
 					if breakpointPath == "" {
 						fullScan = true
 					}
 					
-					if err := d.fsWalkAndSync(ctx, srcPath + "/", dstPath, stats, breakpointPath, &fullScan, db2); err != nil {
+					if err := d.fsWalkAndSync(ctx, srcPath + "/", dstPath, stats, line, breakpointPath, &fullScan, db2); err != nil {
 						fmt.Printf("[aliyun_to_115] fsWalkAndSync目录同步失败 [%s]: %v\n", srcPath, err)
 					} else {
 						failed = false
-						clearBreakpoint(db2)
+						clearBreakpoint(db2, line)
 					}
 				} else {
 					// 文件：走原有 processSingleFile 流程
@@ -339,7 +342,7 @@ func (d *AliyunTo115) doSync() {
 	// ========== 驱动遍历模式 ==========
 	d.discoverAliyunStorages()
 
-	breakpointPath := getBreakpoint(db2)
+	breakpointPath := getBreakpoint(db2, "root")
 	fullScan := false
 	if breakpointPath == "" {
 		fmt.Println("[aliyun_to_115] 未发现断点记录，开始全新全量扫描...")
@@ -352,8 +355,8 @@ func (d *AliyunTo115) doSync() {
 	fmt.Println("[aliyun_to_115] 开始通过fs.List遍历文件...")
 	
 
-	if err := d.fsWalkAndSync(ctx, "/", "/", stats, breakpointPath, &fullScan, db2); err != nil {
-		clearBreakpoint(db2)
+	if err := d.fsWalkAndSync(ctx, "/", "/", stats, "root", breakpointPath, &fullScan, db2); err != nil {
+		clearBreakpoint(db2, "root")
 	}
 
 	fmt.Printf("[aliyun_to_115] ===== 同步完成: 跳过%v / 秒传%v / 正常%v / 失败%v =====\n",
@@ -494,7 +497,7 @@ func getRealDriverAndFile(ctx context.Context, itemPath string) (driver.Driver, 
 	return drv, file, err
 }
 
-func (d *AliyunTo115) fsWalkAndSync(ctx context.Context, currentPath string, targetBase string, stats *syncStats, breakpointPath string, fullScan *bool, db *sql.DB) error {
+func (d *AliyunTo115) fsWalkAndSync(ctx context.Context, currentPath string, targetBase string, stats *syncStats, breakpointName, breakpointPath string, fullScan *bool, db *sql.DB) error {
 	// 1. 标准化当前路径，确保以 / 结尾
 	if !strings.HasSuffix(currentPath, "/") {
 		currentPath += "/"
@@ -586,7 +589,7 @@ func (d *AliyunTo115) fsWalkAndSync(ctx context.Context, currentPath string, tar
 			if *fullScan {
 				dstPath := filepath.Join(targetBase, fName)
 				if db != nil {
-					setBreakpoint(db, fullPath) // 更新最新的文件断点
+					setBreakpoint(db, breakpointName, fullPath) // 更新最新的文件断点
 				}
 				stats.total++
 

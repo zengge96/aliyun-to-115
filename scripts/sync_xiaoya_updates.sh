@@ -481,9 +481,6 @@ trap cleanup SIGINT
 while true
 do
     main
-
-    sqlite3 "./data/work.db" "DELETE FROM strm_tasks WHERE id = (SELECT id FROM strm_tasks ORDER BY id ASC LIMIT 1);" >/dev/null 2>&1
-
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] 开始执行 get_xiaoya_updates..."
     get_xiaoya_updates
     

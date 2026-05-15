@@ -581,7 +581,7 @@ func (d *AliyunTo115) fsWalkAndSync(ctx context.Context, currentPath string, tar
 		if f.IsDir() {
 			// 递归调用，并保持目标路径层级同步
 			subTargetBase := filepath.Join(targetBase, fName)
-			if err := d.fsWalkAndSync(ctx, subPath, subTargetBase, stats, breakpointPath, fullScan, db); err != nil {
+			if err := d.fsWalkAndSync(ctx, subPath, subTargetBase, stats, breakpointName, breakpointPath, fullScan, db); err != nil {
 				return err
 			}
 		} else {

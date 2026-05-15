@@ -355,7 +355,7 @@ func (d *AliyunTo115) doSync() {
 	fmt.Println("[aliyun_to_115] 开始通过fs.List遍历文件...")
 	
 
-	if err := d.fsWalkAndSync(ctx, "/", "/", stats, "root", breakpointPath, &fullScan, db2); err != nil {
+	if err := d.fsWalkAndSync(ctx, "/", "/", stats, "root", breakpointPath, &fullScan, db2); err == nil {
 		clearBreakpoint(db2, "root")
 	}
 

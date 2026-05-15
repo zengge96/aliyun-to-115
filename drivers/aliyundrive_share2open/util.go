@@ -237,10 +237,15 @@ func (d *AliyundriveShare2Open) _refreshTokenOpen(ctx context.Context) (string, 
 		}
 		return resp.RefreshToken, resp.AccessToken, nil
 	}
+	// alipanTV 本地刷新：不走 UseOnlineAPI 和 client_id，直接用 TV 扫码协议拿 token
+	if d.AlipanType == "alipanTV" {
+		return d.getTvToken(tokenToUse)
+	}
 	// 本地刷新逻辑，必须要求 client_id 和 client_secret
 	if d.ClientID == "" || d.ClientSecret == "" {
 		return "", "", fmt.Errorf("empty ClientID or ClientSecret")
 	}
+
 	err := d.wait(ctx, limiterOther)
 	if err != nil {
 		return "", "", err

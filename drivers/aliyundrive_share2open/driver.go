@@ -276,37 +276,35 @@ func (d *AliyundriveShare2Open) Copy2Myali(ctx context.Context, src_driveid stri
 
 }
 
-func (d *AliyundriveShare2Open) GetmyLink(ctx context.Context, file_id string, old_file_id string, file_name string) (string, error) {
-	existed_download_url, ok := d.DownloadUrl_dict[file_id]
-	if ok {
-		return existed_download_url, nil
+func (d *AliyundriveShare2Open) requestOpen(ctx context.Context, uri, method string, callback base.ReqCallback, retry ...bool) ([]byte, error) {
+	req := base.RestyClient.R()
+	req.SetHeader("Authorization", "Bearer "+d.AccessTokenOpen)
+	if method == http.MethodPost {
+		req.SetHeader("Content-Type", "application/json")
 	}
-
-    count := 1
-    for {
-        res, err := d.requestOpen(ctx, "/adrive/v1.0/openFile/getDownloadUrl", http.MethodPost, func(req *resty.Request) {
-			req.SetBody(base.Json{
-					"drive_id":   d.MyAliDriveId,
-					"file_id":    file_id,
-					"expire_sec": 14300,
-			})
-		})
-        if err != nil {
-            if count > 2 {
-                  return "http://img.xiaoya.pro/abnormal.png", err
-            }
-			fmt.Println("获取下载链接失败第",count,"次 ",file_name)
-            count += 1
-            time.Sleep(1 * 1000 * time.Millisecond)
-        }
-
-        if err == nil {
-            d.DownloadUrl_dict[file_id] = utils.Json.Get(res, "url").ToString()
-			d.Hash_dict[old_file_id] = utils.Json.Get(res, "content_hash").ToString()
-			return d.DownloadUrl_dict[file_id], nil
-		}	
-    }	
+	if callback != nil {
+		callback(req)
+	}
+	var e ErrorResp
+	req.SetError(&e)
+	res, err := req.Execute(method, API_URL+uri)
+	if err != nil {
+		return nil, err
+	}
+	isRetry := len(retry) > 0 && retry[0]
+	if e.Code != "" {
+		if !isRetry && utils.SliceContains([]string{"AccessTokenInvalid", "AccessTokenExpired", "I400JD"}, e.Code) {
+			err = d.refreshTokenOpen(ctx)
+			if err != nil {
+				return nil, err
+			}
+			return d.requestOpen(ctx, uri, method, callback, true)
+		}
+		return nil, fmt.Errorf("%s:%s", e.Code, e.Message)
+	}
+	return res.Body(), nil
 }
+
 
 func (d *AliyundriveShare2Open) Remove(ctx context.Context, file_id string) error {
 	_, err := d.requestOpen(ctx, "/adrive/v1.0/openFile/delete", http.MethodPost, func(req *resty.Request) {

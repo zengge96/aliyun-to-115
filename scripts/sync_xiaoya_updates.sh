@@ -489,5 +489,5 @@ do
     
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] 进程已退出，将在 3 秒后重启..."
 
-    sleep 3
+    sleep 600
 done

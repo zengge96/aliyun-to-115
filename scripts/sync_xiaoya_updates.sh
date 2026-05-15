@@ -8,11 +8,9 @@ INPUT_STRM="./strm.txt"
 INPUT_115_SHARE_LIST="./115share_internal.txt"
 INIT_WAIT_TIME=12
 CONST_XIAOYA_URL="https://github.com/xiaoyaDev/data/raw/refs/heads/main/update.zip"
-CONST_XIAOYA_STRM_URL="https://github.com/xiaoyaDev/data/raw/refs/heads/main/strm.zip"
 CONST_XIAOYA_115_SHARE_URL="https://github.com/xiaoyaDev/data/raw/refs/heads/main/115share_list.txt"
 
 # 默认参数，可以在config.txt中覆盖定义，拷贝到config.txt中修改
-CONST_STRM_MODE="true"
 CONST_ALIPAN_TYPE="alipan" # alipan - 对应opentoken, alipanTV - 对应tvtoken，配置与openlist官方AliyundriveOpen驱动完全一致
 CONST_REFRESH_TOKEN_OPEN="<REFRESH_TOKEN_OPEN>" # 获取方式与openlist官方AliyundriveOpen驱动完全一致
 CONST_REFRESH_TOKEN="<REFRESH_TOKEN>"
@@ -20,7 +18,7 @@ CONST_115_COOKIE="<115_COOKIE>"
 CONST_115_SYNC_ROOT_ID="auto" # auto会自动在115根目录下创建"小雅同步"目录
 CONST_TEMP_TRANSFER_FOLDER_ID="root"
 CONST_ADMIN_PASS="12345"
-MOUNT_PATHS=("") # ()表示全部挂载，("/每日更新" "/整理中")表示按需挂载，以具体配置为准
+MOUNT_PATHS=() # ()表示全部挂载，("/每日更新" "/整理中")表示按需挂载，以具体配置为准
 
 # ================= 辅助函数 =================
 # SQL 转义，防止单引号注入破坏 SQL 语句
@@ -148,43 +146,6 @@ download_and_extract_sql() {
     rm -f "$TEMP_ZIP"
 
     if [ ! -s "$INPUT_SQL" ]; then
-        echo -e "${RED}❌ 错误: 提取后的文件为空，请检查压缩包内容。${NC}"
-        exit 1
-    fi
-}
-
-download_and_extract_strm() {
-    MOUNT_PATHS=()
-    if [ "$CONST_XIAOYA_STRM_URL"x = x ]; then
-        echo "未定义strm包下载地址，使用本地文件！"
-        return 0
-    fi
-    # 定义颜色
-    local RED='\033[0;31m'
-    local GREEN='\033[0;32m'
-    local YELLOW='\033[1;33m'
-    local NC='\033[0m'
-
-    local TEMP_ZIP="./strm.zip"
-
-    local TARGET_DIR=$(dirname "$INPUT_STRM")
-    mkdir -p "$TARGET_DIR"
-
-    echo -e ">>> strm模式已开启，正在下载strm包...${NC}"
-    curl -sL -f "$CONST_XIAOYA_STRM_URL" -o "$TEMP_ZIP" || {
-        echo -e "${RED}❌ 错误: 下载失败。${NC}"
-        exit 1
-    }
-
-    unzip -p "$TEMP_ZIP" "*.txt" > "$INPUT_STRM" || {
-        echo -e "${RED}❌ 错误: 解压失败或压缩包内无 .txt 文件。${NC}"
-        rm -f "$TEMP_ZIP"
-        exit 1
-    }
-
-    rm -f "$TEMP_ZIP"
-
-    if [ ! -s "$INPUT_STRM" ]; then
         echo -e "${RED}❌ 错误: 提取后的文件为空，请检查压缩包内容。${NC}"
         exit 1
     fi
@@ -364,17 +325,13 @@ function get_xiaoya_updates() {
     unzip -p "${TMP_DIR}/latest.zip" index.daily.txt > "${TMP_DIR}/latest.txt"
     unzip -p "${TMP_DIR}/old.zip" index.daily.txt > "${TMP_DIR}/old.txt"
 
-    echo "=> 对比完成，以下是相对老版本新增的内容：" >&2
-    echo "======================================================" >&2
+    echo "=> 提取新增的内容完成" >&2
     
     # 使用 awk 高效对比两个文件，输出 latest.txt 中存在但 old.txt 中不存在的行 (且保持原本顺序)
     awk 'NR==FNR{seen[$0]=1; next} !seen[$0]' "${TMP_DIR}/old.txt" "${TMP_DIR}/latest.txt" | sed 's/^\.//' | awk -F'#' '{printf("%s#%s\n",$1,$1)}' > strm.txt
-    
-    echo "======================================================" >&2
-    
+
     # 清理临时文件
     rm -rf "${TMP_DIR}"
-    echo "=> 任务完成，已清理临时文件。" >&2
 }
 
 # ================= 主流程 =================
@@ -384,10 +341,6 @@ main() {
     check_configs
 
     download_and_extract_sql
-
-    if [ "$CONST_STRM_MODE"x = "true"x ]; then
-        download_and_extract_strm
-    fi
 
     if [ ! -f "$INPUT_SQL" ]; then
         echo "!!! 错误: 找不到文件 $INPUT_SQL"

@@ -140,14 +140,7 @@ func (d *AliyundriveShare2Open) request(url, method string, callback base.ReqCal
 		fmt.Println(e.Code, ": ", e.Message)
 		if utils.SliceContains([]string{"AccessTokenInvalid", "AccessTokenExpired", "I400JD"}, e.Code) || e.Code == "ShareLinkTokenInvalid" {
 			if utils.SliceContains([]string{"AccessTokenInvalid", "AccessTokenExpired", "I400JD"}, e.Code) {
-				oldToken := tokenToUse
-				tokenMutex.Lock()
-				if AliAccessToken != "" && AliAccessToken != oldToken {
-					tokenMutex.Unlock()
-					return d.request(url, method, callback)
-				}
 				err = d.refreshToken()
-				tokenMutex.Unlock()
 			} else {
 				err = d.getShareToken()
 			}
@@ -307,24 +300,15 @@ func (d *AliyundriveShare2Open) refreshTokenOpen(ctx context.Context) error {
 		return err
 	}
 	log.Infof("[ali_open] token exchange: %s -> %s", d.RefreshToken, refresh)
-	d.RefreshTokenOpen, d.AccessTokenOpen = refresh, access
-	tokenMutex.Lock()
 	AliOpenRefreshToken, AliOpenAccessToken = refresh, access
-	tokenMutex.Unlock()
+	d.RefreshTokenOpen, d.AccessTokenOpen = refresh, access
 	op.MustSaveDriverStorage(d)
 	return nil
 }
 
 func (d *AliyundriveShare2Open) requestOpen(ctx context.Context, uri, method string, callback base.ReqCallback, retry ...bool) ([]byte, error) {
-	// 优先使用全局共享 token（其他实例刷新的），其次用实例自己的
-	tokenMutex.Lock()
-	tokenToUse := AliOpenAccessToken
-	if tokenToUse == "" {
-		tokenToUse = d.AccessTokenOpen
-	}
-	tokenMutex.Unlock()
 	req := base.RestyClient.R()
-	req.SetHeader("Authorization", "Bearer " + tokenToUse)
+	req.SetHeader("Authorization", "Bearer "+d.AccessTokenOpen)
 	if method == http.MethodPost {
 		req.SetHeader("Content-Type", "application/json")
 	}
@@ -340,14 +324,7 @@ func (d *AliyundriveShare2Open) requestOpen(ctx context.Context, uri, method str
 	isRetry := len(retry) > 0 && retry[0]
 	if e.Code != "" {
 		if !isRetry && utils.SliceContains([]string{"AccessTokenInvalid", "AccessTokenExpired", "I400JD"}, e.Code) {
-			oldToken := tokenToUse
-			tokenMutex.Lock()
-			if AliOpenAccessToken != "" && AliOpenAccessToken != oldToken {
-				tokenMutex.Unlock()
-				return d.requestOpen(ctx, uri, method, callback, true)
-			}
 			err = d.refreshTokenOpen(ctx)
-			tokenMutex.Unlock()
 			if err != nil {
 				return nil, err
 			}

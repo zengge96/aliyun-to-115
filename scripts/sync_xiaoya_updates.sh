@@ -378,34 +378,34 @@ function get_xiaoya_updates() {
 }
 
 # ================= 主流程 =================
+main() {
+    check_and_install_deps
+    load_external_config
+    check_configs
 
-check_and_install_deps
-load_external_config
-check_configs
+    download_and_extract_sql
 
-download_and_extract_sql
+    if [ "$CONST_STRM_MODE"x = "true"x ]; then
+        download_and_extract_strm
+    fi
 
-if [ "$CONST_STRM_MODE"x = "true"x ]; then
-    download_and_extract_strm
-fi
+    if [ ! -f "$INPUT_SQL" ]; then
+        echo "!!! 错误: 找不到文件 $INPUT_SQL"
+        exit 1
+    fi
 
-if [ ! -f "$INPUT_SQL" ]; then
-    echo "!!! 错误: 找不到文件 $INPUT_SQL"
-    exit 1
-fi
+    init_db
 
-init_db
+    echo ">>> 清理旧数据并准备环境..."
+    ESC_TOKEN_OPEN=$(escape_sql "$CONST_REFRESH_TOKEN_OPEN")
+    ESC_TOKEN=$(escape_sql "$CONST_REFRESH_TOKEN")
+    ESC_115_COOKIE=$(escape_sql "$CONST_115_COOKIE")
+    ESC_SYNC_ROOT_ID=$(escape_sql "$CONST_115_SYNC_ROOT_ID")
+    ESC_TEMP_ID=$(escape_sql "$CONST_TEMP_TRANSFER_FOLDER_ID")
+    ESC_ALIPAN_TYPE=$(escape_sql "$CONST_ALIPAN_TYPE")
 
-echo ">>> 清理旧数据并准备环境..."
-ESC_TOKEN_OPEN=$(escape_sql "$CONST_REFRESH_TOKEN_OPEN")
-ESC_TOKEN=$(escape_sql "$CONST_REFRESH_TOKEN")
-ESC_115_COOKIE=$(escape_sql "$CONST_115_COOKIE")
-ESC_SYNC_ROOT_ID=$(escape_sql "$CONST_115_SYNC_ROOT_ID")
-ESC_TEMP_ID=$(escape_sql "$CONST_TEMP_TRANSFER_FOLDER_ID")
-ESC_ALIPAN_TYPE=$(escape_sql "$CONST_ALIPAN_TYPE")
-
-TMP_SQL="process_tmp_$$.sql"
-cat <<EOF > "$TMP_SQL"
+    TMP_SQL="process_tmp_$$.sql"
+    cat <<EOF > "$TMP_SQL"
 BEGIN TRANSACTION;
 
 -- 清理 3 个表
@@ -420,27 +420,27 @@ CREATE TEMP TABLE temp_storages (
 );
 EOF
 
-echo ">>> 解析与转换 SQL 数据..."
+    echo ">>> 解析与转换 SQL 数据..."
 
-# 将 x_storages 的数据重定向插入到临时表进行处理
-grep -i "^INSERT INTO x_storages" "$INPUT_SQL" | sed 's/INSERT INTO x_storages/INSERT INTO temp_storages/i' >> "$TMP_SQL"
+    # 将 x_storages 的数据重定向插入到临时表进行处理
+    grep -i "^INSERT INTO x_storages" "$INPUT_SQL" | sed 's/INSERT INTO x_storages/INSERT INTO temp_storages/i' >> "$TMP_SQL"
 
-# 追加 SQL 转换与清洗逻辑
-cat <<EOF >> "$TMP_SQL"
+    # 追加 SQL 转换与清洗逻辑
+    cat <<EOF >> "$TMP_SQL"
 -- 过滤不需要的驱动
 DELETE FROM temp_storages WHERE c3 IN ('PikPakShare', 'QuarkShare', 'AList V2', 'AList V3', 'UCShare');
 EOF
 
-if [ ${#MOUNT_PATHS[@]} -gt 0 ]; then
-    cond=""
-    for p in "${MOUNT_PATHS[@]}"; do
-        cond="$cond c1 NOT LIKE '${p}%' AND"
-    done
-    cond="${cond%AND}"
-    echo "DELETE FROM temp_storages WHERE $cond;" >> "$TMP_SQL"
-fi
+    if [ ${#MOUNT_PATHS[@]} -gt 0 ]; then
+        cond=""
+        for p in "${MOUNT_PATHS[@]}"; do
+            cond="$cond c1 NOT LIKE '${p}%' AND"
+        done
+        cond="${cond%AND}"
+        echo "DELETE FROM temp_storages WHERE $cond;" >> "$TMP_SQL"
+    fi
 
-cat <<EOF >> "$TMP_SQL"
+    cat <<EOF >> "$TMP_SQL"
 -- 转换 AliyundriveShare 驱动
 UPDATE temp_storages 
 SET 
@@ -480,8 +480,8 @@ FROM temp_storages;
 
 EOF
 
-echo ">>> 插入 AliyunTo115 驱动..."
-cat <<EOF >> "$TMP_SQL"
+    echo ">>> 插入 AliyunTo115 驱动..."
+    cat <<EOF >> "$TMP_SQL"
 INSERT INTO x_storages VALUES (
     NULL, '/115sync', 0, 'AliyunTo115', 30, '', 'work',
     json('{"open115_cookie":"$ESC_115_COOKIE","sync_interval":20,"root_folder_id":"$ESC_SYNC_ROOT_ID","qrcode_token":"","qrcode_source":"","page_size":0,"limit_rate":2,"delete_after_sync":false,"run_once":true}'),
@@ -492,30 +492,33 @@ INSERT INTO x_storages VALUES (
 COMMIT;
 EOF
 
-# 第一步：执行核心存储转换（有严格事务保护）
-sqlite3 "$DB_PATH" < "$TMP_SQL"
-SQL_RET=$?
+    # 第一步：执行核心存储转换（有严格事务保护）
+    sqlite3 "$DB_PATH" < "$TMP_SQL"
+    SQL_RET=$?
 
-# 第二步：处理 Setting 配置，完全模拟原版 Python 的 try...except: pass （使用 2>/dev/null 屏蔽因列数不同的报错）
-grep -i "^INSERT INTO x_setting_items" "$INPUT_SQL" | sqlite3 "$DB_PATH" 2>/dev/null
+    # 第二步：处理 Setting 配置，完全模拟原版 Python 的 try...except: pass （使用 2>/dev/null 屏蔽因列数不同的报错）
+    grep -i "^INSERT INTO x_setting_items" "$INPUT_SQL" | sqlite3 "$DB_PATH" 2>/dev/null
 
-rm -f "$TMP_SQL"
+    rm -f "$TMP_SQL"
 
-download_and_import_115_share_list
+    download_and_import_115_share_list
 
-if [ $SQL_RET -eq 0 ]; then
-    STORAGE_COUNT=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM x_storages;")
-    echo ">>> 同步完成！总挂载数: $STORAGE_COUNT"
-else
-    echo "!!! 数据库同步过程中出错，请检查。"
-fi
+    if [ $SQL_RET -eq 0 ]; then
+        STORAGE_COUNT=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM x_storages;")
+        echo ">>> 同步完成！总挂载数: $STORAGE_COUNT"
+    else
+        echo "!!! 数据库同步过程中出错，请检查。"
+    fi
 
-echo ">>> 数据全部准备就绪，并自动运行openlist同步服务。"
-echo
+    echo ">>> 数据全部准备就绪，并自动运行openlist同步服务。"
+    echo
+}
 
 while true
 do
     rm -rf data >/dev/null 2>&1 
+    main()
+    
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] 开始执行 get_xiaoya_updates..."
     get_xiaoya_updates
     

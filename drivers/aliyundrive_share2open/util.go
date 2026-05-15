@@ -68,11 +68,15 @@ func getSub(token string) (string, error) {
 }
 
 func (d *AliyundriveShare2Open) refreshToken() error {
+	tokenToUse := AliRefreshToken
+	if tokenToUse == "" {
+		tokenToUse = d.RefreshToken
+	}
 	url := "https://auth.aliyundrive.com/v2/account/token"
 	var resp base.TokenResp
 	var e ErrorResp
 	_, err := base.RestyClient.R().
-		SetBody(base.Json{"refresh_token": d.RefreshToken, "grant_type": "refresh_token"}).
+		SetBody(base.Json{"refresh_token": tokenToUse, "grant_type": "refresh_token"}).
 		SetResult(&resp).
 		SetError(&e).
 		Post(url)
@@ -82,12 +86,10 @@ func (d *AliyundriveShare2Open) refreshToken() error {
 	if e.Code != "" {
 		return fmt.Errorf("failed to refresh token: %s", e.Message)
 	}
-
 	d.RefreshToken, d.AccessToken = resp.RefreshToken, resp.AccessToken
 	tokenMutex.Lock()
 	AliRefreshToken, AliAccessToken = resp.RefreshToken, resp.AccessToken
 	tokenMutex.Unlock()
-
 	op.MustSaveDriverStorage(d)
 	return nil
 }
@@ -115,11 +117,15 @@ func (d *AliyundriveShare2Open) getShareToken() error {
 }
 
 func (d *AliyundriveShare2Open) request(url, method string, callback base.ReqCallback) ([]byte, error) {
+	tokenToUse := AliAccessToken
+	if tokenToUse == "" {
+		tokenToUse = d.AccessToken
+	}
 	var e ErrorResp
 	req := base.RestyClient.R().
 		SetError(&e).
 		SetHeader("content-type", "application/json").
-		SetHeader("Authorization", "Bearer\t"+d.AccessToken).
+		SetHeader("Authorization", "Bearer\t" + tokenToUse).
 		SetHeader("x-share-token", d.ShareToken)
 	if callback != nil {
 		callback(req)
@@ -134,7 +140,14 @@ func (d *AliyundriveShare2Open) request(url, method string, callback base.ReqCal
 		fmt.Println(e.Code, ": ", e.Message)
 		if utils.SliceContains([]string{"AccessTokenInvalid", "AccessTokenExpired", "I400JD"}, e.Code) || e.Code == "ShareLinkTokenInvalid" {
 			if utils.SliceContains([]string{"AccessTokenInvalid", "AccessTokenExpired", "I400JD"}, e.Code) {
+				oldToken := tokenToUse
+				tokenMutex.Lock()
+				if AliAccessToken != "" && AliAccessToken != oldToken {
+					tokenMutex.Unlock()
+					return d.request(url, method, callback)
+				}
 				err = d.refreshToken()
+				tokenMutex.Unlock()
 			} else {
 				err = d.getShareToken()
 			}
@@ -193,6 +206,10 @@ func (d *AliyundriveShare2Open) getFiles(fileId string) ([]File, error) {
 }
 
 func (d *AliyundriveShare2Open) _refreshTokenOpen(ctx context.Context) (string, string, error) {
+	tokenToUse := AliOpenRefreshToken
+	if tokenToUse == "" {
+		tokenToUse = d.RefreshTokenOpen
+	}
 	if d.UseOnlineAPI && d.APIAddress != "" {
 		u := d.APIAddress
 		var resp struct {
@@ -213,7 +230,7 @@ func (d *AliyundriveShare2Open) _refreshTokenOpen(ctx context.Context) (string, 
 		_, err = base.RestyClient.R().
 			SetResult(&resp).
 			SetQueryParams(map[string]string{
-				"refresh_ui": d.RefreshTokenOpen,
+				"refresh_ui": tokenToUse,
 				"server_use": "true",
 				"driver_txt": driverTxt,
 			}).
@@ -246,7 +263,7 @@ func (d *AliyundriveShare2Open) _refreshTokenOpen(ctx context.Context) (string, 
 			"client_id":     d.ClientID,
 			"client_secret": d.ClientSecret,
 			"grant_type":    "refresh_token",
-			"refresh_token": d.RefreshTokenOpen,
+			"refresh_token": tokenToUse,
 		}).
 		//SetResult(&resp).
 		SetError(&e).

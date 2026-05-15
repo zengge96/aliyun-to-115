@@ -469,7 +469,6 @@ EOF
 
 # 定义清理函数，当脚本接收到 SIGINT (Ctrl+C) 时调用
 cleanup() {
-    echo -e "\n[$(date '+%Y-%m-%d %H:%M:%S')] 接收到中断信号，正在退出..."
     # 终止当前正在运行的后台子进程（如果有）
     # 如果 openlist 在前台运行，这步操作可以确保脚本彻底结束
     exit 0
@@ -486,12 +485,9 @@ do
     
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] 启动 openlist 同步服务..."
     
-    # 使用 exec 可以让 openlist 替换当前的 shell 进程，
-    # 或者直接运行它。为了让 trap 能有效工作，建议确保它是前台进程
     "$OPENLIST_BIN" server
     
-    # 检查退出状态：如果是因为 Ctrl+C 导致的退出，trap 会处理，
-    # 这里的代码可以通过判断退出码来决定是否真的继续循环
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] 进程已退出，将在 3 秒后重启..."
+
     sleep 3
 done

@@ -391,15 +391,19 @@ func getRealProvider(ctx context.Context, itemPath string) string {
 }
 
 func getRealDriverAndFile(ctx context.Context, itemPath string) (driver.Driver, model.Obj, error) {
+	fmt.Printf("[getRealDriverAndFile] START itemPath=%s\n", itemPath)
 	drv, err := fs.GetStorage(itemPath, &fs.GetStoragesArgs{})
 	if err != nil || drv == nil || drv.GetStorage() == nil {
+		fmt.Printf("[getRealDriverAndFile] storage not found itemPath=%s err=%v\n", itemPath, err)
 		return nil, nil, fmt.Errorf("storage not found for path %s: %w", itemPath, err)
 	}
 
 	s := drv.GetStorage()
+	fmt.Printf("[getRealDriverAndFile] driver=%s mount=%s\n", s.Driver, s.MountPath)
 
 	// 如果当前已经是具体的存储驱动（非Alias），直接返回
 	if s.Driver != "Alias" {
+		fmt.Printf("[getRealDriverAndFile] NOT Alias, returning direct driver=%s\n", s.Driver)
 		file, err := fs.Get(ctx, itemPath, &fs.GetArgs{NoLog: true})
 		return drv, file, err
 	}
@@ -448,25 +452,30 @@ func getRealDriverAndFile(ctx context.Context, itemPath string) (driver.Driver, 
 	switch len(rootOrder) {
 	case 0:
 		// 配置为空兜底
+		fmt.Printf("[getRealDriverAndFile] case 0 (empty rootOrder) relPath=%s\n", relPath)
 		file, err := fs.Get(ctx, itemPath, &fs.GetArgs{NoLog: true})
 		return drv, file, err
 
 	case 1:
 		// 单一根节点合并模式 (Union)
+		fmt.Printf("[getRealDriverAndFile] case 1 (single root) relPath=%s rootOrder[0]=%s\n", relPath, rootOrder[0])
 		targets := pathMap[rootOrder[0]]
 		for _, target := range targets {
 			realPath := strings.TrimSuffix(target, "/") + relPath
-			
+			fmt.Printf("[getRealDriverAndFile] case1 trying realPath=%s\n", realPath)
 			_, err := fs.Get(ctx, realPath, &fs.GetArgs{NoLog: true})
 			if err == nil {
 				// 递归探测，确保钻取到最底层
+				fmt.Printf("[getRealDriverAndFile] case1 SUCCESS realPath=%s, recursing\n", realPath)
 				return getRealDriverAndFile(ctx, realPath)
 			} else {
+				fmt.Printf("[getRealDriverAndFile] case1 fs.Get failed realPath=%s err=%v\n", realPath, err)
 			}
 		}
 
 	default:
 		// 多根节点模式
+		fmt.Printf("[getRealDriverAndFile] case default (multi root) relPath=%s rootOrder=%v\n", relPath, rootOrder)
 		for _, prefix := range rootOrder {
 			// 为了防止 /a 匹配到 /ab 的情况，建议确保前缀带有路径边界符号
 			prefixMatch := prefix
@@ -484,8 +493,7 @@ func getRealDriverAndFile(ctx context.Context, itemPath string) (driver.Driver, 
 					if subPath != "" && subPath != "/" {
 						realPath += "/" + strings.TrimPrefix(subPath, "/")
 					}
-					
-
+					fmt.Printf("[getRealDriverAndFile] case default trying realPath=%s prefix=%s\n", realPath, prefix)
 					_, err := fs.Get(ctx, realPath, &fs.GetArgs{NoLog: true})
 					if err == nil {
 						return getRealDriverAndFile(ctx, realPath)
@@ -496,6 +504,7 @@ func getRealDriverAndFile(ctx context.Context, itemPath string) (driver.Driver, 
 	}
 
 	// 5. 最终兜底
+	fmt.Printf("[getRealDriverAndFile] FALLBACK to original itemPath=%s\n", itemPath)
 	file, err := fs.Get(ctx, itemPath, &fs.GetArgs{NoLog: true})
 	return drv, file, err
 }

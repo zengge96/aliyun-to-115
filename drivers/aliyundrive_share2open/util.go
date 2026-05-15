@@ -305,8 +305,12 @@ func (d *AliyundriveShare2Open) refreshTokenOpen(ctx context.Context) error {
 }
 
 func (d *AliyundriveShare2Open) requestOpen(ctx context.Context, uri, method string, callback base.ReqCallback, retry ...bool) ([]byte, error) {
+	tokenToUse := AliOpenAccessToken
+	if tokenToUse == "" {
+		tokenToUse = d.AccessTokenOpen
+	}
 	req := base.RestyClient.R()
-	req.SetHeader("Authorization", "Bearer "+d.AccessTokenOpen)
+	req.SetHeader("Authorization", "Bearer " + tokenToUse)
 	if method == http.MethodPost {
 		req.SetHeader("Content-Type", "application/json")
 	}

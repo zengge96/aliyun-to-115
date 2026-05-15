@@ -773,7 +773,7 @@ func (d *AliyunTo115) processSingleFile_http(ctx context.Context, srcPath string
 	}
 	elapsed := time.Since(start)
 
-	if uploadErr != nil || result == nil {
+	if uploadErr != nil {
 		fmt.Printf("[aliyun_to_115] 上传失败: %s : %v\n", srcPath, uploadErr)
 		stats.failed++
 		return uploadErr
@@ -787,7 +787,7 @@ func (d *AliyunTo115) processSingleFile_http(ctx context.Context, srcPath string
 		stats.normal++
 	}
 
-	if d.DeleteAfterSync {
+	if d.DeleteAfterSync && result != nil {
 		_ = d.p115Client.removeFrom115(ctx, result)
 	}
 
@@ -871,7 +871,7 @@ func (d *AliyunTo115) processSingleFile_file(ctx context.Context, srcPath string
 	}
 	elapsed := time.Since(start)
 
-	if uploadErr != nil || result == nil {
+	if uploadErr != nil {
 		fmt.Printf("[aliyun_to_115] 上传失败: %s : %v\n", srcPath, uploadErr)
 		stats.failed++
 		return uploadErr
@@ -885,7 +885,7 @@ func (d *AliyunTo115) processSingleFile_file(ctx context.Context, srcPath string
 		stats.normal++
 	}
 
-	if d.DeleteAfterSync {
+	if d.DeleteAfterSync && result != nil {
 		_ = d.p115Client.removeFrom115(ctx, result)
 	}
 
@@ -983,7 +983,7 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 	}
 	elapsed := time.Since(start)
 
-	if uploadErr != nil || result == nil {
+	if uploadErr != nil {
 		fmt.Printf("[aliyun_to_115] 上传失败: %s : %v\n", srcPath, uploadErr)
 		stats.failed++
 		return uploadErr
@@ -997,7 +997,7 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 		stats.normal++
 	}
 
-	if d.DeleteAfterSync {
+	if d.DeleteAfterSync && result != nil {
 		_ = d.p115Client.removeFrom115(ctx, result)
 	}
 

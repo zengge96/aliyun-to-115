@@ -7,18 +7,18 @@ INPUT_SQL="./xiaoya.sql"
 INPUT_STRM="./strm.txt"
 INPUT_115_SHARE_LIST="./115share_internal.txt"
 INIT_WAIT_TIME=12
-
-# 默认参数，可以在config.txt中覆盖定义，拷贝到config.txt中修改
-CONST_STRM_MODE="false"
 CONST_XIAOYA_URL="https://github.com/xiaoyaDev/data/raw/refs/heads/main/update.zip"
 CONST_XIAOYA_STRM_URL="https://github.com/xiaoyaDev/data/raw/refs/heads/main/strm.zip"
 CONST_XIAOYA_115_SHARE_URL="https://github.com/xiaoyaDev/data/raw/refs/heads/main/115share_list.txt"
+
+# 默认参数，可以在config.txt中覆盖定义，拷贝到config.txt中修改
+CONST_STRM_MODE="false"
+CONST_ALIPAN_TYPE="alipan" # alipan - 对应opentoken, alipanTV - 对应tvtoken，配置与openlist官方AliyundriveOpen驱动完全一致
 CONST_REFRESH_TOKEN_OPEN="<REFRESH_TOKEN_OPEN>" # 获取方式与openlist官方AliyundriveOpen驱动完全一致
 CONST_REFRESH_TOKEN="<REFRESH_TOKEN>"
 CONST_115_COOKIE="<115_COOKIE>"
 CONST_115_SYNC_ROOT_ID="auto" # auto会自动在115根目录下创建"小雅同步"目录
 CONST_TEMP_TRANSFER_FOLDER_ID="root"
-CONST_ALIPAN_TYPE="alipan" # alipan - 对应opentoken, alipanTV - 对应tvtoken，配置与openlist官方AliyundriveOpen驱动完全一致
 CONST_ADMIN_PASS="12345"
 MOUNT_PATHS=("/每日更新") # ()表示全部挂载，("/每日更新" "/整理中")表示按需挂载，以具体配置为准
 

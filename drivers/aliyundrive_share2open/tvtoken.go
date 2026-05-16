@@ -24,7 +24,6 @@ import (
 // getTvToken 通过 TV 扫码登录协议获取 RefreshToken 和 AccessToken
 // 当 d.AlipanType == "alipanTV" 时调用此函数
 func (d *AliyundriveShare2Open) getTvToken(refreshToken string) (string, string, error) {
-	fmt.Printf("[ali_tv] getTvToken called, refreshToken=%s\n", refreshToken)
 	body := map[string]interface{}{
 		"refresh_token": refreshToken,
 	}
@@ -43,10 +42,8 @@ func (d *AliyundriveShare2Open) getTvToken(refreshToken string) (string, string,
 		Post("https://api.extscreen.com/aliyundrive/v4/token")
 
 	if err != nil || resp.StatusCode() != 200 {
-		fmt.Printf("[ali_tv] resp body=%s\n", resp.String())
 		return "", "", fmt.Errorf("[ali_tv] 请求 token 失败: %s", resp.String())
 	}
-	fmt.Printf("[ali_tv] resp body=%s\n", resp.String())
 
 	var tokenData map[string]interface{}
 	if err := json.Unmarshal(resp.Body(), &tokenData); err != nil {
@@ -75,7 +72,6 @@ func (d *AliyundriveShare2Open) getTvToken(refreshToken string) (string, string,
 	if err != nil {
 		return "", "", fmt.Errorf("[ali_tv] 解密响应失败: %w", err)
 	}
-	fmt.Printf("[ali_tv] plain=%s\n", plain)
 
 	type tvTokenResp struct {
 		RefreshToken string `json:"refresh_token"`

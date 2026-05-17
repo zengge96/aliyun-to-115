@@ -947,6 +947,8 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 	// 规避115 Share List的Size错误
 	fileSize := realFile.GetSize()
 	provider, _ := model.GetProvider(realFile)
+	fmt.Printf("provider:%s\n", provider)
+	fmt.Printf("fileSize:%s\n", fileSize)
 	if provider == "115 Share" {
 		req, _ := http.NewRequestWithContext(ctx, http.MethodHead, link.URL, nil)
 		resp, err := http.DefaultClient.Do(req)
@@ -965,6 +967,7 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 			return fmt.Errorf("content-length invalid")
 		}
 	}
+	fmt.Printf("fileSize:%s\n", fileSize)
 
 	stream := newUrlFileStreamer(path.Base(dstPath), fileSize, sha1Str, link.URL)
 

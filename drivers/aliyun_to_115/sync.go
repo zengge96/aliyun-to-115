@@ -968,6 +968,7 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 		}
 	}
 	fmt.Printf("fileSize:%s\n",fileSize)
+	fmt.Printf("sha1Str:%s\n",sha1Str)
 
 	stream := newUrlFileStreamer(path.Base(dstPath), fileSize, sha1Str, link.URL)
 

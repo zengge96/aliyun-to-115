@@ -898,6 +898,8 @@ func (d *AliyunTo115) processSingleFile_file(ctx context.Context, srcPath string
 
 func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dstPath string, stats *syncStats) error {
 	aliyun, realFile, err := getRealDriverAndFile(ctx, srcPath)
+	s := aliyun.GetStorage()
+	fmt.Printf("provider:%s\n", s.Driver)
 	if err != nil {
 		fmt.Printf("[aliyun_to_115] 获取源文件或驱动失败， fullPath=%s : %v\n", srcPath, err)
 		stats.failed++

@@ -250,7 +250,6 @@ func (d *AliyunTo115) doSync() {
 			}
 
 			line = strings.TrimSpace(line)
-			fmt.Printf("lint:%s\n", line)
 			if line == "" {
 				db2.Exec("DELETE FROM strm_tasks WHERE id = ?", recID)
 				continue
@@ -674,7 +673,14 @@ func (d *AliyunTo115) getOrCreateDirID(ctx context.Context, fullPath string) (st
 	return dirObj.GetID(), nil
 }
 
-func (d *AliyunTo115) processSingleFile_http(ctx context.Context, srcPath string, dstPath string, stats *syncStats) error {
+func (d *AliyunTo115) processSingleFile_http(ctx context.Context, srcPath string, dstPath string, stats *syncStats) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("[aliyun_to_115] 捕获崩溃 [%s]: %v\n", srcPath, r)
+			stats.failed++
+			err = fmt.Errorf("panic: %v", r)
+		}
+	}()
 	p115DirStr := d.GetStorage().MountPath + path.Dir(dstPath)
 	p115DirID, err := d.getOrCreateDirID(ctx, p115DirStr)
 	if err != nil {
@@ -710,7 +716,7 @@ func (d *AliyunTo115) processSingleFile_http(ctx context.Context, srcPath string
 		return nil
 	}
 
-	// 3. 下载完整内容到内存 (修复点：必须使用 GET 方法)
+	// 3. 下载完整内容到内存
 	req2, _ := http.NewRequestWithContext(ctx, http.MethodGet, srcPath, nil)
 
 	resp2, err := http.DefaultClient.Do(req2)
@@ -735,7 +741,7 @@ func (d *AliyunTo115) processSingleFile_http(ctx context.Context, srcPath string
 		return err
 	}
 
-	// 修复点：明确抛出长度不匹配的错误，避免返回 nil
+	// 长度不匹配
 	if int64(len(data)) != fileSize {
 		errMismatch := fmt.Errorf("文件大小不匹配: 期望 %d, 实际读取 %d", fileSize, len(data))
 		fmt.Printf("[aliyun_to_115] 读取内容失败 [%s]: %v\n", srcPath, errMismatch)
@@ -799,7 +805,14 @@ func (d *AliyunTo115) processSingleFile_http(ctx context.Context, srcPath string
 	return nil
 }
 
-func (d *AliyunTo115) processSingleFile_file(ctx context.Context, srcPath string, dstPath string, stats *syncStats) error {
+func (d *AliyunTo115) processSingleFile_file(ctx context.Context, srcPath string, dstPath string, stats *syncStats) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("[aliyun_to_115] 捕获崩溃 [%s]: %v\n", srcPath, r)
+			stats.failed++
+			err = fmt.Errorf("panic: %v", r)
+		}
+	}()
 	p115DirStr := d.GetStorage().MountPath + path.Dir(dstPath)
 	p115DirID, err := d.getOrCreateDirID(ctx, p115DirStr)
 	if err != nil {
@@ -897,7 +910,14 @@ func (d *AliyunTo115) processSingleFile_file(ctx context.Context, srcPath string
 	return nil
 }
 
-func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dstPath string, stats *syncStats) error {
+func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dstPath string, stats *syncStats) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("[aliyun_to_115] 捕获崩溃 [%s]: %v\n", srcPath, r)
+			stats.failed++
+			err = fmt.Errorf("panic: %v", r)
+		}
+	}()
 	aliyun, realFile, err := getRealDriverAndFile(ctx, srcPath)
 	if err != nil {
 		fmt.Printf("[aliyun_to_115] 获取源文件或驱动失败， fullPath=%s : %v\n", srcPath, err)

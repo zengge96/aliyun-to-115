@@ -250,6 +250,7 @@ func (d *AliyunTo115) doSync() {
 			}
 
 			line = strings.TrimSpace(line)
+			fmt.Printf("lint:%s\n", line)
 			if line == "" {
 				db2.Exec("DELETE FROM strm_tasks WHERE id = ?", recID)
 				continue

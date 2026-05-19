@@ -188,6 +188,7 @@ func (d *AliyunTo115) doSync() {
 	}()
 
 	defer func() {
+		time.Sleep(2000 * time.Millisecond)
 		if currentStats != nil && !d.terminated {
 			fmt.Printf("\n[aliyun_to_115] ===== 本轮统计: 跳过%v / 秒传%v / 正常%v / 失败%v =====\n",
 				currentStats.skipped, currentStats.rapid, currentStats.normal, currentStats.failed)
@@ -352,7 +353,6 @@ func (d *AliyunTo115) doSync() {
 		if d.RunOnce {
 			selfTerminate()
 		}
-		time.Sleep(2000 * time.Millisecond)
 		return
 	}
 
@@ -379,7 +379,6 @@ func (d *AliyunTo115) doSync() {
 	if d.RunOnce {
 		selfTerminate()
 	}
-	time.Sleep(2000 * time.Millisecond)
 	return
 }
 

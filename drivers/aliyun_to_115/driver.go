@@ -36,7 +36,6 @@ type AliyunTo115 struct {
 	syncRunning bool
 	userInt bool
 	syncCacheDB *sql.DB
-	syncedCache  map[string]bool // SHA1 → true
 	basePath     string
 }
 
@@ -97,7 +96,6 @@ func (d *AliyunTo115) Init(ctx context.Context) error {
 		return err
 	}
 	d.p115Client = p115Client
-	d.syncedCache = make(map[string]bool)
 
 	// 打开 work.db（SQLite），与 strm_tasks 表同一库
 	d.basePath, _ = os.Getwd()
@@ -113,20 +111,11 @@ func (d *AliyunTo115) Init(ctx context.Context) error {
 		return fmt.Errorf("create cache table failed: %w", err)
 	}
 
-	rows, err := d.syncCacheDB.Query("SELECT cache_key FROM aliyun_sync_cache")
-	if err != nil {
-		fmt.Printf("[aliyun_to_115] load cache error: %v\n", err)
-	} else {
-		for rows.Next() {
-			var k string
-			if rows.Scan(&k) == nil {
-				d.syncedCache[k] = true
-			}
-		}
-		rows.Close()
-	}
-	if len(d.syncedCache) > 0 {
-		fmt.Printf("[aliyun_to_115] 从work.db加载 %d 条同步记录\n", len(d.syncedCache))
+	// 统计 DB 中已有记录数（不再加载到内存）
+	var count int
+	d.syncCacheDB.QueryRow("SELECT COUNT(*) FROM aliyun_sync_cache").Scan(&count)
+	if count > 0 {
+		fmt.Printf("[aliyun_to_115] 数据库已有 %d 条同步记录\n", count)
 	}
 
 	go d.doSyncLoop()
@@ -226,6 +215,13 @@ func (d *AliyunTo115) GetStorage() *model.Storage {
 
 func (d *AliyunTo115) SetStorage(s model.Storage) {
 	d.p115.SetStorage(s)
+}
+
+// isSyncedCache 检查 cache key 是否已同步（查数据库）
+func (d *AliyunTo115) isSyncedCache(cacheKey string) bool {
+	var exists int
+	err := d.syncCacheDB.QueryRow("SELECT 1 FROM aliyun_sync_cache WHERE cache_key = ?", cacheKey).Scan(&exists)
+	return err == nil
 }
 
 // saveSyncedCache 持久化 cache key 到数据库

@@ -757,13 +757,10 @@ func (d *AliyunTo115) processSingleFile_http(ctx context.Context, srcPath string
 	sha1Str := utils.HashData(utils.SHA1, data)
 
 	cacheKey := srcPath + "/" + sha1Str
-	d.syncLoopMu.Lock()
-	if d.syncedCache[cacheKey] {
-		d.syncLoopMu.Unlock()
+	if d.isSyncedCache(cacheKey) {
 		stats.skipped++
 		return nil
 	}
-	d.syncLoopMu.Unlock()
 
 	// 5. 创建内存流
 	stream := newMemFileStreamer(path.Base(dstPath), fileSize, sha1Str, data)
@@ -801,9 +798,6 @@ func (d *AliyunTo115) processSingleFile_http(ctx context.Context, srcPath string
 		_ = d.p115Client.removeFrom115(ctx, result)
 	}
 
-	d.syncLoopMu.Lock()
-	d.syncedCache[cacheKey] = true
-	d.syncLoopMu.Unlock()
 	d.saveSyncedCache(cacheKey)
 	stats.synced++
 	return nil
@@ -856,13 +850,10 @@ func (d *AliyunTo115) processSingleFile_file(ctx context.Context, srcPath string
 	}
 
 	cacheKey := srcPath + "/" + sha1Str
-	d.syncLoopMu.Lock()
-	if d.syncedCache[cacheKey] {
-		d.syncLoopMu.Unlock()
+	if d.isSyncedCache(cacheKey) {
 		stats.skipped++
 		return nil
 	}
-	d.syncLoopMu.Unlock()
 
 	// 重新打开用于上传
 	f2, err := os.Open(localPath)
@@ -906,9 +897,6 @@ func (d *AliyunTo115) processSingleFile_file(ctx context.Context, srcPath string
 		_ = d.p115Client.removeFrom115(ctx, result)
 	}
 
-	d.syncLoopMu.Lock()
-	d.syncedCache[cacheKey] = true
-	d.syncLoopMu.Unlock()
 	d.saveSyncedCache(cacheKey)
 	stats.synced++
 	return nil
@@ -950,13 +938,10 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 		cacheKey = srcPath + "/" + sha1Str
 	}
 
-	d.syncLoopMu.Lock()
-	if d.syncedCache[cacheKey] {
-		d.syncLoopMu.Unlock()
+	if d.isSyncedCache(cacheKey) {
 		stats.skipped++
 		return nil
 	}
-	d.syncLoopMu.Unlock()
 
 	link, err := aliyun.Link(ctx, realFile, model.LinkArgs{})
 	// 兼容某些驱动可能重新获取一次 Hash
@@ -1025,9 +1010,6 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 		_ = d.p115Client.removeFrom115(ctx, result)
 	}
 
-	d.syncLoopMu.Lock()
-	d.syncedCache[cacheKey] = true
-	d.syncLoopMu.Unlock()
 	d.saveSyncedCache(cacheKey)
 	stats.synced++
 	return nil

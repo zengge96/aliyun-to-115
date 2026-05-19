@@ -63,11 +63,11 @@ func TestFormatSize(t *testing.T) {
 }
 
 // =============================================================================
-// Test 2: memFileStreamer — implements FileStreamer
+// Test 2: testMemFileStreamer — implements FileStreamer
 // =============================================================================
 
-// memFileStreamer is an in-memory backed FileStreamer for testing.
-type memFileStreamer struct {
+// testMemFileStreamer is an in-memory backed FileStreamer for testing.
+type testMemFileStreamer struct {
 	*utils.Closers // satisfies utils.ClosersIF
 	name    string
 	path    string
@@ -77,22 +77,22 @@ type memFileStreamer struct {
 	pos     int64
 }
 
-func (m *memFileStreamer) GetID() string             { return "" }
-func (m *memFileStreamer) GetName() string           { return m.name }
-func (m *memFileStreamer) GetSize() int64            { return m.size }
-func (m *memFileStreamer) GetPath() string           { return m.path }
-func (m *memFileStreamer) SetPath(path string)       { m.path = path }
-func (m *memFileStreamer) ModTime() time.Time        { return time.Time{} }
-func (m *memFileStreamer) CreateTime() time.Time     { return time.Time{} }
-func (m *memFileStreamer) IsDir() bool               { return false }
-func (m *memFileStreamer) GetHash() utils.HashInfo   { return utils.NewHashInfo(utils.SHA1, m.sha1Str) }
-func (m *memFileStreamer) GetMimetype() string       { return "application/octet-stream" }
-func (m *memFileStreamer) NeedStore() bool          { return true }
-func (m *memFileStreamer) IsForceStreamUpload() bool { return false }
-func (m *memFileStreamer) GetExist() model.Obj       { return nil }
-func (m *memFileStreamer) SetExist(model.Obj)        {}
+func (m *testMemFileStreamer) GetID() string             { return "" }
+func (m *testMemFileStreamer) GetName() string           { return m.name }
+func (m *testMemFileStreamer) GetSize() int64            { return m.size }
+func (m *testMemFileStreamer) GetPath() string           { return m.path }
+func (m *testMemFileStreamer) SetPath(path string)       { m.path = path }
+func (m *testMemFileStreamer) ModTime() time.Time        { return time.Time{} }
+func (m *testMemFileStreamer) CreateTime() time.Time     { return time.Time{} }
+func (m *testMemFileStreamer) IsDir() bool               { return false }
+func (m *testMemFileStreamer) GetHash() utils.HashInfo   { return utils.NewHashInfo(utils.SHA1, m.sha1Str) }
+func (m *testMemFileStreamer) GetMimetype() string       { return "application/octet-stream" }
+func (m *testMemFileStreamer) NeedStore() bool          { return true }
+func (m *testMemFileStreamer) IsForceStreamUpload() bool { return false }
+func (m *testMemFileStreamer) GetExist() model.Obj       { return nil }
+func (m *testMemFileStreamer) SetExist(model.Obj)        {}
 
-func (m *memFileStreamer) Read(p []byte) (int, error) {
+func (m *testMemFileStreamer) Read(p []byte) (int, error) {
 	if m.pos >= m.size {
 		return 0, io.EOF
 	}
@@ -101,7 +101,7 @@ func (m *memFileStreamer) Read(p []byte) (int, error) {
 	return n, nil
 }
 
-func (m *memFileStreamer) RangeRead(ra http_range.Range) (io.Reader, error) {
+func (m *testMemFileStreamer) RangeRead(ra http_range.Range) (io.Reader, error) {
 	start := ra.Start
 	if start >= m.size {
 		return io.NopCloser(strings.NewReader("")), nil
@@ -113,7 +113,7 @@ func (m *memFileStreamer) RangeRead(ra http_range.Range) (io.Reader, error) {
 	return io.NopCloser(strings.NewReader(string(m.data[start:end]))), nil
 }
 
-func (m *memFileStreamer) CacheFullAndWriter(up *model.UpdateProgress, w io.Writer) (model.File, error) {
+func (m *testMemFileStreamer) CacheFullAndWriter(up *model.UpdateProgress, w io.Writer) (model.File, error) {
 	r := bytes.NewReader(m.data)
 	if w != nil {
 		r.WriteTo(w) // write full content to w if needed
@@ -121,7 +121,7 @@ func (m *memFileStreamer) CacheFullAndWriter(up *model.UpdateProgress, w io.Writ
 	return r, nil
 }
 
-func (m *memFileStreamer) GetFile() model.File { return bytes.NewReader(m.data) }
+func (m *testMemFileStreamer) GetFile() model.File { return bytes.NewReader(m.data) }
 
 func TestMemFileStreamer_ImplementsFileStreamer(t *testing.T) {
 	content := []byte("hello world")
@@ -129,7 +129,7 @@ func TestMemFileStreamer_ImplementsFileStreamer(t *testing.T) {
 	h.Write(content)
 	sha1Str := strings.ToUpper(hex.EncodeToString(h.Sum(nil)))
 
-	s := &memFileStreamer{
+	s := &testMemFileStreamer{
 		Closers: &utils.Closers{},
 		name:    "test.txt",
 		size:    int64(len(content)),
@@ -160,7 +160,7 @@ func TestMemFileStreamer_ImplementsFileStreamer(t *testing.T) {
 
 func TestMemFileStreamer_RangeRead(t *testing.T) {
 	content := []byte("0123456789") // 10 bytes
-	s := &memFileStreamer{
+	s := &testMemFileStreamer{
 		Closers: &utils.Closers{},
 		name:    "test.bin",
 		size:    int64(len(content)),
@@ -183,7 +183,7 @@ func TestMemFileStreamer_RangeRead(t *testing.T) {
 
 func TestMemFileStreamer_CacheFullAndWriter(t *testing.T) {
 	content := []byte("test content")
-	s := &memFileStreamer{
+	s := &testMemFileStreamer{
 		Closers: &utils.Closers{},
 		name:    "test.bin",
 		size:    int64(len(content)),
@@ -264,7 +264,7 @@ func TestSync115Client_UploadTo115(t *testing.T) {
 	h.Write(content)
 	sha1Str := strings.ToUpper(hex.EncodeToString(h.Sum(nil)))
 
-	stream := &memFileStreamer{
+	stream := &testMemFileStreamer{
 		Closers: &utils.Closers{},
 		name:    "tdd_1mb.bin",
 		size:    size,
@@ -316,7 +316,7 @@ func TestSync115Client_UploadLargeFile(t *testing.T) {
 	h.Write(content)
 	sha1Str := strings.ToUpper(hex.EncodeToString(h.Sum(nil)))
 
-	stream := &memFileStreamer{
+	stream := &testMemFileStreamer{
 		Closers: &utils.Closers{},
 		name:    "tdd_11mb.bin",
 		size:    size,
@@ -336,29 +336,6 @@ func TestSync115Client_UploadLargeFile(t *testing.T) {
 	client.removeFrom115(context.Background(), result)
 }
 
-
-// =============================================================================
-// Test 5: Dedup cache — empty aliyunStorages should leave cache unchanged
-// =============================================================================
-func TestSyncDedupCache(t *testing.T) {
-	d := &AliyunTo115{
-		syncRunning: false,
-		syncedCache: map[string]bool{
-			"already_synced_sha1": true,
-		},
-		// syncLoopMu is zero-value (unlocked)
-	}
-
-	d.doSync()
-
-	// Cache should be unchanged
-	if !d.syncedCache["already_synced_sha1"] {
-		t.Error("cache entry was lost after doSync")
-	}
-	if len(d.syncedCache) != 1 {
-		t.Errorf("cache size = %d, want 1", len(d.syncedCache))
-	}
-}
 
 // =============================================================================
 // Test 7: Upload via urlFileStreamer (HTTP) — URL → VirtualFile → HTTP Range → 115

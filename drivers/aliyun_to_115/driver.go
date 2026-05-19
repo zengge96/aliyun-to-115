@@ -34,7 +34,7 @@ type AliyunTo115 struct {
 	p115Client  *sync115Client
 	syncLoopMu  sync.Mutex
 	syncRunning bool
-	userInt bool
+	terminated bool
 	syncCacheDB *sql.DB
 	basePath     string
 }
@@ -47,7 +47,7 @@ func (d *AliyunTo115) Init(ctx context.Context) error {
 		return errors.New("open115_cookie is required")
 	}
 
-	d.userInt = false
+	d.terminated = false
 
 	// 初始化内部驱动参数
 	d.p115.Addition.Cookie = d.Open115Cookie

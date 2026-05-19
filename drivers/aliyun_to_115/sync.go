@@ -69,6 +69,9 @@ func (d *AliyunTo115) doSyncLoop() {
 	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
+
+	d.doSync()
+
 	for range ticker.C {
 		d.doSync()
 	}
@@ -144,13 +147,16 @@ func selfTerminate() {
 }
 
 func (d *AliyunTo115) doSync() {
+	if d.userInt {
+		return
+	}
+	
 	d.syncLoopMu.Lock()
 	if d.syncRunning {
 		d.syncLoopMu.Unlock()
 		return
 	}
 	d.syncRunning = true
-	d.userInt = true
 	d.syncLoopMu.Unlock()
 
 	defer func() {
@@ -173,8 +179,9 @@ func (d *AliyunTo115) doSync() {
 		<-ctx.Done() // 等待信号触发
 		currentStatsMu.Lock()
 		defer currentStatsMu.Unlock()
-		if currentStats != nil && d.userInt {
-			fmt.Printf("\n[aliyun_to_115] ===== 用户中断: 跳过%v / 秒传%v / 正常%v / 失败%v =====\n",
+		d.userInt = true
+		if currentStats != nil {
+			fmt.Printf("\n[aliyun_to_115] ===== 本轮统计: 跳过%v / 秒传%v / 正常%v / 失败%v =====\n",
 				currentStats.skipped, currentStats.rapid, currentStats.normal, currentStats.failed)
 		}
 	}()
@@ -334,9 +341,6 @@ func (d *AliyunTo115) doSync() {
 			db2.Exec("DELETE FROM strm_tasks WHERE id = ?", recID)
 		}
 
-		fmt.Printf("[aliyun_to_115] ===== 同步完成: 跳过%v / 秒传%v / 正常%v / 失败%v =====\n",
-			stats.skipped, stats.rapid, stats.normal, stats.failed)
-		d.userInt = false
 		if d.RunOnce {
 			selfTerminate()
 		}
@@ -364,10 +368,6 @@ func (d *AliyunTo115) doSync() {
 		clearBreakpoint(db2, "root")
 	}
 
-	fmt.Printf("[aliyun_to_115] ===== 同步完成: 跳过%v / 秒传%v / 正常%v / 失败%v =====\n",
-		stats.skipped, stats.rapid, stats.normal, stats.failed)
-
-	d.userInt = false
 	if d.RunOnce {
 		selfTerminate()
 	}

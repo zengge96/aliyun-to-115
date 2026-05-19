@@ -47,6 +47,8 @@ func (d *AliyunTo115) Init(ctx context.Context) error {
 		return errors.New("open115_cookie is required")
 	}
 
+	d.userInt = false
+
 	// 初始化内部驱动参数
 	d.p115.Addition.Cookie = d.Open115Cookie
 	d.p115.Addition.QRCodeToken = d.QRCodeToken

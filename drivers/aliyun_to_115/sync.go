@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"path"
 	"path/filepath"
+	"regexp"
 	_ "github.com/mattn/go-sqlite3"
 
 	_115 "github.com/OpenListTeam/OpenList/v4/drivers/115"
@@ -267,6 +268,8 @@ func (d *AliyunTo115) doSync() {
 				continue
 			}
 
+			re := regexp.MustCompile(`%([^0-9a-fA-F].|.[^0-9a-fA-F]|$)`)
+			srcRaw = re.ReplaceAllString(srcRaw, "%25$1")
 			if strings.HasPrefix(srcRaw, "http://xiaoya.host") || strings.HasPrefix(srcRaw, "https://xiaoya.host") {
 				if u, err := url.Parse(srcRaw); err == nil {
 					//srcRaw, _ = url.QueryUnescape(u.Path)

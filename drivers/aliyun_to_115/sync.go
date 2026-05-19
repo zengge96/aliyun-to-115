@@ -67,13 +67,14 @@ func (d *AliyunTo115) doSyncLoop() {
 	if interval <= 0 {
 		interval = 10 * time.Minute
 	}
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
 
-	d.doSync()
-
-	for range ticker.C {
+	for {
 		d.doSync()
+
+		waitSeconds := int(interval.Seconds())
+		fmt.Printf("[同步] 执行完成，等待 %d 秒后下次同步\n", waitSeconds)
+
+		time.Sleep(interval)
 	}
 }
 

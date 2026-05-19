@@ -393,6 +393,11 @@ EOF
         echo "DELETE FROM temp_storages WHERE $cond;" >> "$TMP_SQL"
     fi
 
+    online="true"
+    if [ "$CONST_ALIPAN_TYPE"x == "alipanTV"x ];then
+        online="false"
+    fi
+
     cat <<EOF >> "$TMP_SQL"
 -- 转换 AliyundriveShare 驱动
 UPDATE temp_storages 
@@ -403,7 +408,7 @@ SET
         '$.RefreshToken', '$ESC_TOKEN',
         '$.RefreshTokenOpen', '$ESC_TOKEN_OPEN',
         '$.TempTransferFolderID', '$ESC_TEMP_ID',
-        '$.use_online_api', json('true'),
+        '$.use_online_api', json('$online'),
         '$.alipan_type', '$ESC_ALIPAN_TYPE',
         '$.api_url_address', 'https://api.oplist.org/alicloud/renewapi'
     )

@@ -176,21 +176,25 @@ func (d *AliyunTo115) doSync() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	var once sync.Once
 	go func() {
-		<-ctx.Done() // 等待信号触发
-		currentStatsMu.Lock()
-		defer currentStatsMu.Unlock()
-		d.terminated = true;
-		if currentStats != nil {
-			fmt.Printf("\n[aliyun_to_115] ===== 本轮统计: 跳过%v / 秒传%v / 正常%v / 失败%v =====\n",
-				currentStats.skipped, currentStats.rapid, currentStats.normal, currentStats.failed)
-		}
+		<-ctx.Done()
+		once.Do(func() {
+			currentStatsMu.Lock()
+			defer currentStatsMu.Unlock()
+
+			d.terminated = true
+			if currentStats != nil {
+				fmt.Printf("\n[aliyun_to_115] ===== 同步统计: 跳过%v / 秒传%v / 正常%v / 失败%v =====\n",
+					currentStats.skipped, currentStats.rapid, currentStats.normal, currentStats.failed)
+			}
+		})
 	}()
 
 	defer func() {
 		time.Sleep(2000 * time.Millisecond)
 		if currentStats != nil && !d.terminated {
-			fmt.Printf("\n[aliyun_to_115] ===== 本轮统计: 跳过%v / 秒传%v / 正常%v / 失败%v =====\n",
+			fmt.Printf("\n[aliyun_to_115] ===== 同步统计: 跳过%v / 秒传%v / 正常%v / 失败%v =====\n",
 				currentStats.skipped, currentStats.rapid, currentStats.normal, currentStats.failed)
 		}
 	}()

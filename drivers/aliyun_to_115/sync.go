@@ -150,7 +150,7 @@ func (d *AliyunTo115) doSync() {
 	if d.userInt {
 		return
 	}
-	
+
 	d.syncLoopMu.Lock()
 	if d.syncRunning {
 		d.syncLoopMu.Unlock()
@@ -181,6 +181,13 @@ func (d *AliyunTo115) doSync() {
 		defer currentStatsMu.Unlock()
 		d.userInt = true
 		if currentStats != nil {
+			fmt.Printf("\n[aliyun_to_115] ===== 本轮统计: 跳过%v / 秒传%v / 正常%v / 失败%v =====\n",
+				currentStats.skipped, currentStats.rapid, currentStats.normal, currentStats.failed)
+		}
+	}()
+
+	defer func() {
+		if currentStats != nil && !d.userInt{
 			fmt.Printf("\n[aliyun_to_115] ===== 本轮统计: 跳过%v / 秒传%v / 正常%v / 失败%v =====\n",
 				currentStats.skipped, currentStats.rapid, currentStats.normal, currentStats.failed)
 		}

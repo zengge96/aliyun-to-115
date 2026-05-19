@@ -70,10 +70,10 @@ func (d *AliyunTo115) doSyncLoop() {
 
 	for {
 		d.doSync()
+		time.Sleep(1000 * time.Millisecond)
 
 		waitSeconds := int(interval.Seconds())
 		fmt.Printf("[同步] 执行完成，等待 %d 秒后下次同步\n", waitSeconds)
-
 		time.Sleep(interval)
 	}
 }

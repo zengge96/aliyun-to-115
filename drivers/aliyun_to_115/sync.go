@@ -269,7 +269,8 @@ func (d *AliyunTo115) doSync() {
 
 			if strings.HasPrefix(srcRaw, "http://xiaoya.host") || strings.HasPrefix(srcRaw, "https://xiaoya.host") {
 				if u, err := url.Parse(srcRaw); err == nil {
-					srcRaw, _ = url.QueryUnescape(u.Path)
+					//srcRaw, _ = url.QueryUnescape(u.Path)
+					srcRaw = u.Path
 					srcRaw = strings.TrimPrefix(srcRaw, "/d")
 				}
 			}

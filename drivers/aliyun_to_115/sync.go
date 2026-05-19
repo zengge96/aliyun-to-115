@@ -148,10 +148,6 @@ func selfTerminate() {
 }
 
 func (d *AliyunTo115) doSync() {
-	if d.terminated {
-		return
-	}
-
 	d.syncLoopMu.Lock()
 	if d.syncRunning {
 		d.syncLoopMu.Unlock()
@@ -174,26 +170,14 @@ func (d *AliyunTo115) doSync() {
 
 	// 注册信号处理，Ctrl+C 时打印进度
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	// 自然退出也会打印进度
 	defer stop()
 
-	var once sync.Once
 	go func() {
 		<-ctx.Done()
-		once.Do(func() {
-			currentStatsMu.Lock()
-			defer currentStatsMu.Unlock()
-
-			d.terminated = true
-			if currentStats != nil {
-				fmt.Printf("\n[aliyun_to_115] ===== 同步统计: 跳过%v / 秒传%v / 正常%v / 失败%v =====\n",
-					currentStats.skipped, currentStats.rapid, currentStats.normal, currentStats.failed)
-			}
-		})
-	}()
-
-	defer func() {
-		time.Sleep(2000 * time.Millisecond)
-		if currentStats != nil && !d.terminated {
+		currentStatsMu.Lock()
+		defer currentStatsMu.Unlock()
+		if currentStats != nil {
 			fmt.Printf("\n[aliyun_to_115] ===== 同步统计: 跳过%v / 秒传%v / 正常%v / 失败%v =====\n",
 				currentStats.skipped, currentStats.rapid, currentStats.normal, currentStats.failed)
 		}

@@ -277,12 +277,12 @@ function get_xiaoya_updates() {
         fi
     done
 
-    echo "=> 正在计算时间 (1个月前)..." >&2
+    echo "=> 正在计算时间 (3个月前)..." >&2
     # 兼容 Linux (GNU date) 和 macOS (BSD date) 的时间计算
     if date --version >/dev/null 2>&1; then
-        ONE_MONTH_AGO=$(date -d "1 month ago" --utc +%Y-%m-%dT%H:%M:%SZ)
+        THREE_MONTHS_AGO=$(date -d "3 months ago" --utc +%Y-%m-%dT%H:%M:%SZ)
     else
-        ONE_MONTH_AGO=$(date -v-1m -u +%Y-%m-%dT%H:%M:%SZ)
+        THREE_MONTHS_AGO=$(date -v-3m -u +%Y-%m-%dT%H:%M:%SZ)
     fi
 
     local REPO="xiaoyaDev/data"
@@ -299,7 +299,7 @@ function get_xiaoya_updates() {
     fi
 
     # 利用 until 参数获取距今大于1个月的第一个版本的 commit SHA
-    local OLD_SHA=$(curl -s "${API_URL}&until=${ONE_MONTH_AGO}&per_page=1" | jq -r '.[0].sha')
+    local OLD_SHA=$(curl -s "${API_URL}&until=${THREE_MONTHS_AGO}&per_page=1" | jq -r '.[0].sha')
     if [ "$OLD_SHA" == "null" ] || [ -z "$OLD_SHA" ]; then
         echo "错误: 无法获取1个月前的 commit。" >&2
         return 1

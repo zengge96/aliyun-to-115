@@ -207,7 +207,7 @@ func (d *Pan115) Put(ctx context.Context, dstDir model.Obj, stream model.FileStr
 		}
 		f, err := d.getNewFileByPickCode(fastInfo.PickCode)
 		if err != nil {
-			return nil, nil
+			return nil, err
 		}
 		return f, nil
 	}

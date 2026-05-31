@@ -301,7 +301,7 @@ download_and_import_115_share_list() {
             [ "$root_folder_id" == "root" ] && root_folder_id=""
 
             sqlite3 "$DB_PATH" <<EOF
-INSERT INTO x_storages VALUES(NULL,'/🏷️我的115分享/$mount_path',0,'115 Share',86400,'','work','{"cookie":"$ESC_115_COOKIE","root_folder_id":"$root_folder_id","qrcode_token":"","qrcode_source":"linux","page_size":300,"limit_rate":2,"share_code":"$share_id","receive_code":"$share_pwd"}','','2022-09-29 20:14:52.313982364+00:00',0,0,0,'name','ASC','front',0,'302_redirect',0,'',0);
+INSERT INTO x_storages VALUES(NULL,'/🏷️我的115分享/$mount_path',0,'115 Share',86400,'','work','{"cookie":"$ESC_115_COOKIE","root_folder_id":"$root_folder_id","qrcode_token":"","qrcode_source":"linux","page_size":1000,"limit_rate":2,"share_code":"$share_id","receive_code":"$share_pwd"}','','2022-09-29 20:14:52.313982364+00:00',0,0,0,'name','ASC','front',0,'302_redirect',0,'',0);
 EOF
         done < "$LIST_FILE"
     fi
@@ -419,7 +419,7 @@ echo ">>> 插入 AliyunTo115 驱动..."
 cat <<EOF >> "$TMP_SQL"
 INSERT INTO x_storages VALUES (
     NULL, '/115sync', 0, 'AliyunTo115', 30, '', 'work',
-    json('{"open115_cookie":"$ESC_115_COOKIE","sync_interval":20,"root_folder_id":"$ESC_SYNC_ROOT_ID","qrcode_token":"","qrcode_source":"","page_size":0,"limit_rate":2,"delete_after_sync":false}'),
+    json('{"open115_cookie":"$ESC_115_COOKIE","sync_interval":20,"root_folder_id":"$ESC_SYNC_ROOT_ID","qrcode_token":"","qrcode_source":"","page_size":1000,"limit_rate":1,"delete_after_sync":false}'),
     '', datetime('now', 'localtime'), 0,
     0, 0, '', '', '', 0, '302_redirect', 0, '', 0
 );

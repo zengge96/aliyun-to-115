@@ -926,11 +926,11 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 	}
 
 	// 缓存逻辑
-	cacheKey := srcPath + "/" + realFile.GetID() + "$$$" + strconv.FormatInt(realFile.GetSize(), 10) + "$$$" + realFile.ModTime().Format(time.RFC3339Nano)
+	cacheKey := srcPath + "#" + dstPath + "/" + realFile.GetID() + "$$$" + strconv.FormatInt(realFile.GetSize(), 10) + "$$$" + realFile.ModTime().Format(time.RFC3339Nano)
 	hashInfo := realFile.GetHash()
 	sha1Str := hashInfo.GetHash(utils.SHA1)
 	if sha1Str != "" {
-		cacheKey = srcPath + "/" + sha1Str
+		cacheKey = srcPath + "#" + dstPath + "/" + sha1Str
 	}
 
 	if d.isSyncedCache(cacheKey) {

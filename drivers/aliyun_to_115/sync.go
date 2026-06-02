@@ -751,7 +751,7 @@ func (d *AliyunTo115) processSingleFile_http(ctx context.Context, srcPath string
 	// 4. 计算 SHA1
 	sha1Str := utils.HashData(utils.SHA1, data)
 
-	cacheKey := srcPath + "/" + sha1Str
+	cacheKey := srcPath + "#" + dstPath + "/" + sha1Str
 	if d.isSyncedCache(cacheKey) {
 		stats.skipped++
 		return nil
@@ -844,7 +844,7 @@ func (d *AliyunTo115) processSingleFile_file(ctx context.Context, srcPath string
 		return err
 	}
 
-	cacheKey := srcPath + "/" + sha1Str
+	cacheKey := srcPath + "#" + dstPath + "/" + sha1Str
 	if d.isSyncedCache(cacheKey) {
 		stats.skipped++
 		return nil

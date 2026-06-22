@@ -272,13 +272,16 @@ func (d *AliyunTo115) doSync() {
 				continue
 			}
 
-			re := regexp.MustCompile(`%([^0-9a-fA-F].|.[^0-9a-fA-F]|$)`)
-			srcRaw = re.ReplaceAllString(srcRaw, "%25$1")
-			if strings.HasPrefix(srcRaw, "http://xiaoya.host") || strings.HasPrefix(srcRaw, "https://xiaoya.host") {
-				if u, err := url.Parse(srcRaw); err == nil {
-					//srcRaw, _ = url.QueryUnescape(u.Path)
-					srcRaw = u.Path
-					srcRaw = strings.TrimPrefix(srcRaw, "/d")
+			// 处理 url 转码的特殊处理，file:// 协议跳过此步骤
+			if !strings.HasPrefix(srcRaw, "file://") {
+				re := regexp.MustCompile(`%([^0-9a-fA-F].|.[^0-9a-fA-F]|$)`)
+				srcRaw = re.ReplaceAllString(srcRaw, "%25$1")
+				if strings.HasPrefix(srcRaw, "http://xiaoya.host") || strings.HasPrefix(srcRaw, "https://xiaoya.host") {
+					if u, err := url.Parse(srcRaw); err == nil {
+						//srcRaw, _ = url.QueryUnescape(u.Path)
+						srcRaw = u.Path
+						srcRaw = strings.TrimPrefix(srcRaw, "/d")
+					}
 				}
 			}
 
@@ -905,6 +908,7 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 			err = fmt.Errorf("panic: %v", r)
 		}
 	}()
+	//
 	aliyun, realFile, err := getRealDriverAndFile(ctx, srcPath)
 	if err != nil {
 		fmt.Printf("[aliyun_to_115] 获取源文件或驱动失败， fullPath=%s : %v\n", srcPath, err)

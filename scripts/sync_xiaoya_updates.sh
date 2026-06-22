@@ -459,7 +459,7 @@ EOF
     grep -i "^INSERT INTO x_setting_items" "$INPUT_SQL" | sqlite3 "$DB_PATH" 2>/dev/null
 
 # 设置 filename_char_mapping（默认 / → |，可在 CONFIG 区修改 CONST_FILENAME_CHAR_MAPPING）
-sqlite3 "$DB_PATH" "INSERT OR REPLACE INTO x_setting_items(key,value,type,group,flag) VALUES('filename_char_mapping','${CONST_FILENAME_CHAR_MAPPING}','text','global',0);" 2>/dev/null
+sqlite3 "$DB_PATH" "INSERT OR REPLACE INTO x_setting_items(key,value,type,`group`,flag) VALUES('filename_char_mapping','${CONST_FILENAME_CHAR_MAPPING}','text',4,0);" 2>/dev/null
 
     rm -f "$TMP_SQL"
 

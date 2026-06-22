@@ -18,6 +18,7 @@ CONST_115_COOKIE="<115_COOKIE>"
 CONST_115_SYNC_ROOT_ID="auto" # auto会自动在115根目录下创建"小雅同步"目录
 CONST_TEMP_TRANSFER_FOLDER_ID="root"
 CONST_ADMIN_PASS="12345"
+CONST_FILENAME_CHAR_MAPPING='{"/":"|"}' # 文件名特殊字符映射，格式 JSON: {"原字符":"替换字符"}
 MOUNT_PATHS=() # ()表示全部挂载，("/每日更新" "/整理中")表示按需挂载，以具体配置为准
 
 # ================= 辅助函数 =================
@@ -456,6 +457,9 @@ EOF
 
     # 第二步：处理 Setting 配置，完全模拟原版 Python 的 try...except: pass （使用 2>/dev/null 屏蔽因列数不同的报错）
     grep -i "^INSERT INTO x_setting_items" "$INPUT_SQL" | sqlite3 "$DB_PATH" 2>/dev/null
+
+# 设置 filename_char_mapping（默认 / → |，可在 CONFIG 区修改 CONST_FILENAME_CHAR_MAPPING）
+sqlite3 "$DB_PATH" "INSERT OR REPLACE INTO x_setting_items(key,value,type,group,flag) VALUES('filename_char_mapping','${CONST_FILENAME_CHAR_MAPPING}','text','global',0);" 2>/dev/null
 
     rm -f "$TMP_SQL"
 

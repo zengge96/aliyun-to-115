@@ -20,7 +20,7 @@ CONST_115_COOKIE="<115_COOKIE>"
 CONST_115_SYNC_ROOT_ID="auto" # auto会自动在115根目录下创建"小雅同步"目录
 CONST_TEMP_TRANSFER_FOLDER_ID="root"
 CONST_ADMIN_PASS="12345"
-CONST_FILENAME_CHAR_MAPPING='{"/":"|"}' # 文件名特殊字符映射，格式 JSON: {"原字符":"替换字符"}
+CONST_FILENAME_CHAR_MAPPING='{"/":"|","#":"|"}' # 文件名特殊字符映射，格式 JSON: {"原字符":"替换字符"}
 MOUNT_PATHS=("/每日更新") # ()表示全部挂载，("/每日更新" "/整理中")表示按需挂载，以具体配置为准
 
 # ================= 辅助函数 =================

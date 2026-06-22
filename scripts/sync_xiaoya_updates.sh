@@ -460,7 +460,7 @@ EOF
 
 # 设置 filename_char_mapping（默认 / → |，可在 CONFIG 区修改 CONST_FILENAME_CHAR_MAPPING）
 sqlite3 "$DB_PATH" <<-EOF
-INSERT OR REPLACE INTO x_setting_items(key,value,type,\`group\`,flag) VALUES('filename_char_mapping','${CONST_FILENAME_CHAR_MAPPING}','text',4,0);
+INSERT OR REPLACE INTO x_setting_items(key,value,type,"group",flag) VALUES('filename_char_mapping','${CONST_FILENAME_CHAR_MAPPING}','text',4,0);
 EOF
 
     rm -f "$TMP_SQL"

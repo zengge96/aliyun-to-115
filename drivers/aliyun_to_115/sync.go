@@ -683,12 +683,6 @@ func (d *AliyunTo115) processSingleFile_http(ctx context.Context, srcPath string
 			err = fmt.Errorf("panic: %v", r)
 		}
 	}()
-	p115DirStr := d.GetStorage().MountPath + path.Dir(dstPath)
-	p115DirID, err := d.getOrCreateDirID(ctx, p115DirStr)
-	if err != nil {
-		fmt.Printf("[aliyun_to_115] 准备115目录失败 [%s]: %v\n", p115DirStr, err)
-		return err
-	}
 
 	// 1. HEAD 请求获取文件大小
 	req, _ := http.NewRequestWithContext(ctx, http.MethodHead, srcPath, nil)
@@ -760,6 +754,13 @@ func (d *AliyunTo115) processSingleFile_http(ctx context.Context, srcPath string
 		return nil
 	}
 
+	p115DirStr := d.GetStorage().MountPath + path.Dir(dstPath)
+	p115DirID, err := d.getOrCreateDirID(ctx, p115DirStr)
+	if err != nil {
+		fmt.Printf("[aliyun_to_115] 准备115目录失败 [%s]: %v\n", p115DirStr, err)
+		return err
+	}
+
 	// 5. 创建内存流
 	stream := newMemFileStreamer(path.Base(dstPath), fileSize, sha1Str, data)
 
@@ -809,13 +810,7 @@ func (d *AliyunTo115) processSingleFile_file(ctx context.Context, srcPath string
 			err = fmt.Errorf("panic: %v", r)
 		}
 	}()
-	p115DirStr := d.GetStorage().MountPath + path.Dir(dstPath)
-	p115DirID, err := d.getOrCreateDirID(ctx, p115DirStr)
-	if err != nil {
-		fmt.Printf("[aliyun_to_115] 准备115目录失败 [%s]: %v\n", p115DirStr, err)
-		return err
-	}
-
+	
 	// 去掉 file:// 前缀得到真实路径
 	localPath := strings.TrimPrefix(srcPath, "file://")
 	if localPath == srcPath {
@@ -860,6 +855,13 @@ func (d *AliyunTo115) processSingleFile_file(ctx context.Context, srcPath string
 		return err
 	}
 	defer f2.Close()
+
+	p115DirStr := d.GetStorage().MountPath + path.Dir(dstPath)
+	p115DirID, err := d.getOrCreateDirID(ctx, p115DirStr)
+	if err != nil {
+		fmt.Printf("[aliyun_to_115] 准备115目录失败 [%s]: %v\n", p115DirStr, err)
+		return err
+	}
 
 	stream := newFileStreamer(path.Base(dstPath), fileSize, sha1Str, f2)
 
@@ -921,14 +923,6 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 		return fmt.Errorf("[aliyun_to_115] 源文件对象是目录， fullPath=%s", srcPath)
 	}
 
-	p115DirStr := d.GetStorage().MountPath + path.Dir(dstPath)
-	p115DirID, err := d.getOrCreateDirID(ctx, p115DirStr)
-	if err != nil {
-		stats.failed++
-		fmt.Printf("[aliyun_to_115] 准备115目标目录失败 [%s]: %v\n", p115DirStr, err)
-		return err
-	}
-
 	// 缓存逻辑
 	cacheKey := srcPath + "#" + dstPath + "/" + realFile.GetID() + "$$$" + strconv.FormatInt(realFile.GetSize(), 10) + "$$$" + realFile.ModTime().Format(time.RFC3339Nano)
 	hashInfo := realFile.GetHash()
@@ -973,6 +967,14 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 			fmt.Printf("[aliyun_to_115] 115直链无法获取文件大小 [%s]\n", srcPath)
 			return fmt.Errorf("content-length invalid")
 		}
+	}
+
+	p115DirStr := d.GetStorage().MountPath + path.Dir(dstPath)
+	p115DirID, err := d.getOrCreateDirID(ctx, p115DirStr)
+	if err != nil {
+		stats.failed++
+		fmt.Printf("[aliyun_to_115] 准备115目标目录失败 [%s]: %v\n", p115DirStr, err)
+		return err
 	}
 
 	stream := newUrlFileStreamer(path.Base(dstPath), fileSize, sha1Str, link.URL)

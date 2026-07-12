@@ -37,9 +37,10 @@ type sync115Client struct {
 	p115 *_115.Pan115
 }
 
-func newSync115Client(cookie string) (*sync115Client, error) {
+func newSync115Client(cookie string, limitRate float64) (*sync115Client, error) {
 	p115 := &_115.Pan115{}
 	p115.Addition.Cookie = cookie
+	p115.Addition.LimitRate = limitRate
 	if err := p115.Init(context.Background()); err != nil {
 		return nil, err
 	}

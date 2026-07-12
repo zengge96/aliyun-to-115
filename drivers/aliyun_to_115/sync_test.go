@@ -248,7 +248,7 @@ func TestSync115Client_UploadTo115(t *testing.T) {
 				initErr = fmt.Errorf("115 init panicked: %v", r)
 			}
 		}()
-		client, initErr = newSync115Client(cookie)
+		client, initErr = newSync115Client(cookie, 0)
 	}()
 	if initErr != nil {
 		t.Skipf("skip: %v", initErr)
@@ -300,7 +300,7 @@ func TestSync115Client_UploadLargeFile(t *testing.T) {
 				initErr = fmt.Errorf("115 init panicked: %v", r)
 			}
 		}()
-		client, initErr = newSync115Client(cookie)
+		client, initErr = newSync115Client(cookie, 0)
 	}()
 	if initErr != nil {
 		t.Skipf("skip: %v", initErr)
@@ -352,7 +352,7 @@ func TestSync115Client_UploadViaUrlFileStreamer(t *testing.T) {
 				initErr = fmt.Errorf("115 init panicked: %v", r)
 			}
 		}()
-		client, initErr = newSync115Client(cookie)
+		client, initErr = newSync115Client(cookie, 0)
 	}()
 	if initErr != nil {
 		t.Skipf("skip: %v", initErr)
@@ -443,7 +443,7 @@ func testSync115Client_UploadViaUrlFileStreamer_FromCDN(t *testing.T) {
 				initErr = fmt.Errorf("115 init panicked: %v", r)
 			}
 		}()
-		syncClient, initErr = newSync115Client(cookie)
+		syncClient, initErr = newSync115Client(cookie, 0)
 	}()
 	if initErr != nil {
 		t.Skipf("skip: %v", initErr)

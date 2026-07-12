@@ -90,7 +90,7 @@ func (d *AliyunTo115) Init(ctx context.Context) error {
 	}
 
 	// 2. 初始化同步客户端
-	p115Client, err := newSync115Client(d.Open115Cookie)
+	p115Client, err := newSync115Client(d.Open115Cookie, d.LimitRate)
 	if err != nil {
 		return err
 	}

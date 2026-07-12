@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/OpenListTeam/OpenList/v4/internal/driver"
 	"github.com/OpenListTeam/OpenList/v4/internal/model"
@@ -42,7 +43,13 @@ func (d *Pan115) Init(ctx context.Context) error {
 
 func (d *Pan115) WaitLimit(ctx context.Context) error {
 	if d.limiter != nil {
-		return d.limiter.Wait(ctx)
+		start := time.Now()
+		err := d.limiter.Wait(ctx)
+		elapsed := time.Since(start)
+		if elapsed > 10*time.Millisecond {
+			fmt.Printf("[115_debug] WaitLimit: blocked %.0fms\n", float64(elapsed)/float64(time.Millisecond))
+		}
+		return err
 	}
 	return nil
 }
@@ -52,6 +59,7 @@ func (d *Pan115) Drop(ctx context.Context) error {
 }
 
 func (d *Pan115) List(ctx context.Context, dir model.Obj, args model.ListArgs) ([]model.Obj, error) {
+	fmt.Printf("[115_debug] WaitLimit: List dir=%s\n", dir.GetID())
 	if err := d.WaitLimit(ctx); err != nil {
 		return nil, err
 	}
@@ -65,6 +73,7 @@ func (d *Pan115) List(ctx context.Context, dir model.Obj, args model.ListArgs) (
 }
 
 func (d *Pan115) Link(ctx context.Context, file model.Obj, args model.LinkArgs) (*model.Link, error) {
+	fmt.Printf("[115_debug] WaitLimit: Link file=%s\n", file.GetName())
 	if err := d.WaitLimit(ctx); err != nil {
 		return nil, err
 	}
@@ -81,6 +90,7 @@ func (d *Pan115) Link(ctx context.Context, file model.Obj, args model.LinkArgs) 
 }
 
 func (d *Pan115) MakeDir(ctx context.Context, parentDir model.Obj, dirName string) (model.Obj, error) {
+	fmt.Printf("[115_debug] WaitLimit: MakeDir dirName=%s\n", dirName)
 	if err := d.WaitLimit(ctx); err != nil {
 		return nil, err
 	}
@@ -109,6 +119,7 @@ func (d *Pan115) MakeDir(ctx context.Context, parentDir model.Obj, dirName strin
 }
 
 func (d *Pan115) Move(ctx context.Context, srcObj, dstDir model.Obj) (model.Obj, error) {
+	fmt.Printf("[115_debug] WaitLimit: Move src=%s\n", srcObj.GetName())
 	if err := d.WaitLimit(ctx); err != nil {
 		return nil, err
 	}
@@ -123,6 +134,7 @@ func (d *Pan115) Move(ctx context.Context, srcObj, dstDir model.Obj) (model.Obj,
 }
 
 func (d *Pan115) Rename(ctx context.Context, srcObj model.Obj, newName string) (model.Obj, error) {
+	fmt.Printf("[115_debug] WaitLimit: Rename src=%s -> %s\n", srcObj.GetName(), newName)
 	if err := d.WaitLimit(ctx); err != nil {
 		return nil, err
 	}
@@ -137,6 +149,7 @@ func (d *Pan115) Rename(ctx context.Context, srcObj model.Obj, newName string) (
 }
 
 func (d *Pan115) Copy(ctx context.Context, srcObj, dstDir model.Obj) error {
+	fmt.Printf("[115_debug] WaitLimit: Copy src=%s\n", srcObj.GetName())
 	if err := d.WaitLimit(ctx); err != nil {
 		return err
 	}
@@ -144,6 +157,7 @@ func (d *Pan115) Copy(ctx context.Context, srcObj, dstDir model.Obj) error {
 }
 
 func (d *Pan115) Remove(ctx context.Context, obj model.Obj) error {
+	fmt.Printf("[115_debug] WaitLimit: Remove obj=%s\n", obj.GetName())
 	if err := d.WaitLimit(ctx); err != nil {
 		return err
 	}
@@ -151,6 +165,7 @@ func (d *Pan115) Remove(ctx context.Context, obj model.Obj) error {
 }
 
 func (d *Pan115) Put(ctx context.Context, dstDir model.Obj, stream model.FileStreamer, up driver.UpdateProgress) (model.Obj, error) {
+	fmt.Printf("[115_debug] WaitLimit: Put name=%s size=%d\n", stream.GetName(), stream.GetSize())
 	if err := d.WaitLimit(ctx); err != nil {
 		return nil, err
 	}

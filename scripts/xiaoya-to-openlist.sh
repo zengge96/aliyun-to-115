@@ -455,3 +455,5 @@ echo ">>> 数据全部准备就绪，并自动运行openlist同步服务。下�
 echo
 
 "$OPENLIST_BIN" server
+
+//todo：运行结束后，openlist可能会更新CONST_REFRESH_TOKEN_OPEN和CONST_REFRESH_TOKEN，请读取并更新到config.txt，如果有变化，请通过控制台日志显示告知。

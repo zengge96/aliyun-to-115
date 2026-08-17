@@ -497,6 +497,8 @@ do
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] 启动 openlist 同步服务..."
     
     "$OPENLIST_BIN" server
+
+    //todo：运行结束后，openlist可能会更新CONST_REFRESH_TOKEN_OPEN和CONST_REFRESH_TOKEN，请读取并更新到config.txt，如果有变化，请通过控制台日志显示告知。
     
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] 进程已退出，将在 6 小时后重启..."
 

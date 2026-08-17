@@ -193,6 +193,64 @@ load_external_config() {
     eval "$(cat "$config_path")"
 }
 
+# 运行结束后把 openlist 可能刷新过的 token 从数据库回写到 config.txt(有变化则打印日志)
+sync_tokens_from_db() {
+    local config_path="./config.txt"
+    [ -f "$config_path" ] || { echo ">>> [token] 未找到 config.txt,跳过 token 同步"; return 0; }
+    [ -f "$DB_PATH" ] || { echo ">>> [token] 未找到数据库 $DB_PATH,跳过 token 同步"; return 0; }
+
+    # 从 x_storages 表读取 AliyundriveShare2Open 驱动的 addition JSON 配置
+    # openlist 刷新 token 后会通过 MustSaveDriverStorage 写回数据库
+    local row
+    row=$(sqlite3 "$DB_PATH" "SELECT addition FROM x_storages WHERE driver='AliyundriveShare2Open' AND addition IS NOT NULL AND addition != '' LIMIT 1;" 2>/dev/null)
+    if [ -z "$row" ]; then
+        echo ">>> [token] 数据库中未找到 AliyundriveShare2Open 配置,跳过 token 同步"
+        return 0
+    fi
+
+    # 提取最新 token(优先 RefreshTokenOpen/RefreshToken,兼容小写 refresh_token)
+    local db_token_open db_token
+    db_token_open=$(echo "$row" | sed -n 's/.*"RefreshTokenOpen":"\([^"]*\)".*/\1/p' | head -1)
+    db_token=$(echo "$row" | sed -n 's/.*"RefreshToken":"\([^"]*\)".*/\1/p' | head -1)
+    [ -z "$db_token" ] && db_token=$(echo "$row" | sed -n 's/.*"refresh_token":"\([^"]*\)".*/\1/p' | head -1)
+
+    local changed=0
+
+    # 同步 CONST_REFRESH_TOKEN_OPEN
+    if [ -n "$db_token_open" ]; then
+        local cfg_open
+        cfg_open=$(grep -oP '^CONST_REFRESH_TOKEN_OPEN="?\K[^"]*' "$config_path" 2>/dev/null | head -1)
+        if [ "$db_token_open" != "$cfg_open" ]; then
+            if grep -q '^CONST_REFRESH_TOKEN_OPEN=' "$config_path" 2>/dev/null; then
+                sed -i "s#^CONST_REFRESH_TOKEN_OPEN=.*#CONST_REFRESH_TOKEN_OPEN=\"$db_token_open\"#" "$config_path"
+            else
+                echo "CONST_REFRESH_TOKEN_OPEN=\"$db_token_open\"" >> "$config_path"
+            fi
+            echo ">>> [token] CONST_REFRESH_TOKEN_OPEN 已更新: ${cfg_open:-<空>} -> $db_token_open"
+            changed=1
+        fi
+    fi
+
+    # 同步 CONST_REFRESH_TOKEN
+    if [ -n "$db_token" ]; then
+        local cfg_token
+        cfg_token=$(grep -oP '^CONST_REFRESH_TOKEN="?\K[^"]*' "$config_path" 2>/dev/null | head -1)
+        if [ "$db_token" != "$cfg_token" ]; then
+            if grep -q '^CONST_REFRESH_TOKEN=' "$config_path" 2>/dev/null; then
+                sed -i "s#^CONST_REFRESH_TOKEN=.*#CONST_REFRESH_TOKEN=\"$db_token\"#" "$config_path"
+            else
+                echo "CONST_REFRESH_TOKEN=\"$db_token\"" >> "$config_path"
+            fi
+            echo ">>> [token] CONST_REFRESH_TOKEN 已更新: ${cfg_token:-<空>} -> $db_token"
+            changed=1
+        fi
+    fi
+
+    if [ $changed -eq 0 ]; then
+        echo ">>> [token] config.txt 中的 token 已是最新,无需更新"
+    fi
+}
+
 # 初始化数据库
 init_db() {
     
@@ -498,7 +556,8 @@ do
     
     "$OPENLIST_BIN" server
 
-    //todo：运行结束后，openlist可能会更新CONST_REFRESH_TOKEN_OPEN和CONST_REFRESH_TOKEN，请从数据库读取并更新到config.txt，如果有变化，请通过控制台日志显示告知。
+    # 运行结束后,openlist 可能已刷新 token,从数据库读回并更新 config.txt
+    sync_tokens_from_db
     
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] 进程已退出，将在 6 小时后重启..."
 

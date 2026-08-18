@@ -223,6 +223,7 @@ sync_tokens_from_db() {
     # 同步 CONST_REFRESH_TOKEN_OPEN:任何一行与 config.txt 不同都认为有变化,挑第一个不同的更新
     if [ -n "$all_open" ]; then
         local cfg_open new_open=""
+        //todo:要考虑cfg_open未配置或配置文件不存在的场景，如果不存在或未配置，直接跳过配置文件更新。
         cfg_open=$(grep -oP '^CONST_REFRESH_TOKEN_OPEN="?\K[^"]*' "$config_path" 2>/dev/null | head -1)
         while IFS= read -r t; do
             [ -z "$t" ] && continue

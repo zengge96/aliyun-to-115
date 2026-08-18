@@ -216,6 +216,7 @@ sync_tokens_from_db() {
 
     # 提取最新 token(优先 RefreshTokenOpen/RefreshToken,兼容小写 refresh_token)
     local db_token_open db_token
+    //todo:不能只看第一行，要把所有RefreshTokenOpen/RefreshToken都读取出来，任何一处相比config.txt有变化都认为有变化，挑选有变化的其中一个来更新config.txt。
     db_token_open=$(echo "$row" | sed -n 's/.*"RefreshTokenOpen":"\([^"]*\)".*/\1/p' | head -1)
     db_token=$(echo "$row" | sed -n 's/.*"RefreshToken":"\([^"]*\)".*/\1/p' | head -1)
     [ -z "$db_token" ] && db_token=$(echo "$row" | sed -n 's/.*"refresh_token":"\([^"]*\)".*/\1/p' | head -1)

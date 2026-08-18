@@ -223,20 +223,20 @@ sync_tokens_from_db() {
     # 同步 CONST_REFRESH_TOKEN_OPEN:任何一行与 config.txt 不同都认为有变化,挑第一个不同的更新
     if [ -n "$all_open" ]; then
         local cfg_open new_open=""
-        //todo:要考虑cfg_open未配置或配置文件不存在的场景，如果不存在或未配置，直接跳过配置文件更新。
         cfg_open=$(grep -oP '^CONST_REFRESH_TOKEN_OPEN="?\K[^"]*' "$config_path" 2>/dev/null | head -1)
-        while IFS= read -r t; do
-            [ -z "$t" ] && continue
-            if [ "$t" != "$cfg_open" ]; then new_open="$t"; break; fi
-        done <<< "$all_open"
-        if [ -n "$new_open" ]; then
-            if grep -q '^CONST_REFRESH_TOKEN_OPEN=' "$config_path" 2>/dev/null; then
+        # config.txt 未配置该变量 → 直接跳过,不追加
+        if [ -z "$cfg_open" ]; then
+            echo ">>> [token] config.txt 未配置 CONST_REFRESH_TOKEN_OPEN,跳过更新"
+        else
+            while IFS= read -r t; do
+                [ -z "$t" ] && continue
+                if [ "$t" != "$cfg_open" ]; then new_open="$t"; break; fi
+            done <<< "$all_open"
+            if [ -n "$new_open" ]; then
                 sed -i "s#^CONST_REFRESH_TOKEN_OPEN=.*#CONST_REFRESH_TOKEN_OPEN=\"$new_open\"#" "$config_path"
-            else
-                echo "CONST_REFRESH_TOKEN_OPEN=\"$new_open\"" >> "$config_path"
+                echo ">>> [token] CONST_REFRESH_TOKEN_OPEN 已更新: ${cfg_open:-<空>} -> $new_open"
+                changed=1
             fi
-            echo ">>> [token] CONST_REFRESH_TOKEN_OPEN 已更新: ${cfg_open:-<空>} -> $new_open"
-            changed=1
         fi
     fi
 
@@ -244,18 +244,19 @@ sync_tokens_from_db() {
     if [ -n "$all_token" ]; then
         local cfg_token new_token=""
         cfg_token=$(grep -oP '^CONST_REFRESH_TOKEN="?\K[^"]*' "$config_path" 2>/dev/null | head -1)
-        while IFS= read -r t; do
-            [ -z "$t" ] && continue
-            if [ "$t" != "$cfg_token" ]; then new_token="$t"; break; fi
-        done <<< "$all_token"
-        if [ -n "$new_token" ]; then
-            if grep -q '^CONST_REFRESH_TOKEN=' "$config_path" 2>/dev/null; then
+        # config.txt 未配置该变量 → 直接跳过,不追加
+        if [ -z "$cfg_token" ]; then
+            echo ">>> [token] config.txt 未配置 CONST_REFRESH_TOKEN,跳过更新"
+        else
+            while IFS= read -r t; do
+                [ -z "$t" ] && continue
+                if [ "$t" != "$cfg_token" ]; then new_token="$t"; break; fi
+            done <<< "$all_token"
+            if [ -n "$new_token" ]; then
                 sed -i "s#^CONST_REFRESH_TOKEN=.*#CONST_REFRESH_TOKEN=\"$new_token\"#" "$config_path"
-            else
-                echo "CONST_REFRESH_TOKEN=\"$new_token\"" >> "$config_path"
+                echo ">>> [token] CONST_REFRESH_TOKEN 已更新: ${cfg_token:-<空>} -> $new_token"
+                changed=1
             fi
-            echo ">>> [token] CONST_REFRESH_TOKEN 已更新: ${cfg_token:-<空>} -> $new_token"
-            changed=1
         fi
     fi
 

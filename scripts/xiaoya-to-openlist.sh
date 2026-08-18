@@ -244,49 +244,55 @@ sync_tokens_from_db() {
     [ -f "$config_path" ] || { echo ">>> [token] 未找到 config.txt,跳过 token 同步"; return 0; }
     [ -f "$DB_PATH" ] || { echo ">>> [token] 未找到数据库 $DB_PATH,跳过 token 同步"; return 0; }
 
-    # 从 x_storages 表读取 AliyundriveShare2Open 驱动的 addition JSON 配置
-    # openlist 刷新 token 后会通过 MustSaveDriverStorage 写回数据库
-    local row
-    row=$(sqlite3 "$DB_PATH" "SELECT addition FROM x_storages WHERE driver='AliyundriveShare2Open' AND addition IS NOT NULL AND addition != '' LIMIT 1;" 2>/dev/null)
-    if [ -z "$row" ]; then
+    # 读取所有 AliyundriveShare2Open 驱动的 addition JSON(不只看第一行)
+    local rows
+    rows=$(sqlite3 -cmd ".timeout 30000" "$DB_PATH" "SELECT addition FROM x_storages WHERE driver='AliyundriveShare2Open' AND addition IS NOT NULL AND addition != '';" 2>/dev/null)
+    if [ -z "$rows" ]; then
         echo ">>> [token] 数据库中未找到 AliyundriveShare2Open 配置,跳过 token 同步"
         return 0
     fi
 
-    # 提取最新 token(优先 RefreshTokenOpen/RefreshToken,兼容小写 refresh_token)
-    local db_token_open db_token
-    db_token_open=$(echo "$row" | sed -n 's/.*"RefreshTokenOpen":"\([^"]*\)".*/\1/p' | head -1)
-    db_token=$(echo "$row" | sed -n 's/.*"RefreshToken":"\([^"]*\)".*/\1/p' | head -1)
-    [ -z "$db_token" ] && db_token=$(echo "$row" | sed -n 's/.*"refresh_token":"\([^"]*\)".*/\1/p' | head -1)
+    # 收集所有行里的 RefreshTokenOpen / RefreshToken(兼容小写 refresh_token),去重
+    local all_open all_token
+    all_open=$(echo "$rows" | sed -n 's/.*"RefreshTokenOpen":"\([^"]*\)".*/\1/p' | sort -u)
+    all_token=$(echo "$rows" | sed -n -e 's/.*"RefreshToken":"\([^"]*\)".*/\1/p' -e 's/.*"refresh_token":"\([^"]*\)".*/\1/p' | sort -u)
 
     local changed=0
 
-    # 同步 CONST_REFRESH_TOKEN_OPEN
-    if [ -n "$db_token_open" ]; then
-        local cfg_open
+    # 同步 CONST_REFRESH_TOKEN_OPEN:任何一行与 config.txt 不同都认为有变化,挑第一个不同的更新
+    if [ -n "$all_open" ]; then
+        local cfg_open new_open=""
         cfg_open=$(grep -oP '^CONST_REFRESH_TOKEN_OPEN="?\K[^"]*' "$config_path" 2>/dev/null | head -1)
-        if [ "$db_token_open" != "$cfg_open" ]; then
+        while IFS= read -r t; do
+            [ -z "$t" ] && continue
+            if [ "$t" != "$cfg_open" ]; then new_open="$t"; break; fi
+        done <<< "$all_open"
+        if [ -n "$new_open" ]; then
             if grep -q '^CONST_REFRESH_TOKEN_OPEN=' "$config_path" 2>/dev/null; then
-                sed -i "s#^CONST_REFRESH_TOKEN_OPEN=.*#CONST_REFRESH_TOKEN_OPEN=\"$db_token_open\"#" "$config_path"
+                sed -i "s#^CONST_REFRESH_TOKEN_OPEN=.*#CONST_REFRESH_TOKEN_OPEN=\"$new_open\"#" "$config_path"
             else
-                echo "CONST_REFRESH_TOKEN_OPEN=\"$db_token_open\"" >> "$config_path"
+                echo "CONST_REFRESH_TOKEN_OPEN=\"$new_open\"" >> "$config_path"
             fi
-            echo ">>> [token] CONST_REFRESH_TOKEN_OPEN 已更新: ${cfg_open:-<空>} -> $db_token_open"
+            echo ">>> [token] CONST_REFRESH_TOKEN_OPEN 已更新: ${cfg_open:-<空>} -> $new_open"
             changed=1
         fi
     fi
 
-    # 同步 CONST_REFRESH_TOKEN
-    if [ -n "$db_token" ]; then
-        local cfg_token
+    # 同步 CONST_REFRESH_TOKEN:同样逻辑
+    if [ -n "$all_token" ]; then
+        local cfg_token new_token=""
         cfg_token=$(grep -oP '^CONST_REFRESH_TOKEN="?\K[^"]*' "$config_path" 2>/dev/null | head -1)
-        if [ "$db_token" != "$cfg_token" ]; then
+        while IFS= read -r t; do
+            [ -z "$t" ] && continue
+            if [ "$t" != "$cfg_token" ]; then new_token="$t"; break; fi
+        done <<< "$all_token"
+        if [ -n "$new_token" ]; then
             if grep -q '^CONST_REFRESH_TOKEN=' "$config_path" 2>/dev/null; then
-                sed -i "s#^CONST_REFRESH_TOKEN=.*#CONST_REFRESH_TOKEN=\"$db_token\"#" "$config_path"
+                sed -i "s#^CONST_REFRESH_TOKEN=.*#CONST_REFRESH_TOKEN=\"$new_token\"#" "$config_path"
             else
-                echo "CONST_REFRESH_TOKEN=\"$db_token\"" >> "$config_path"
+                echo "CONST_REFRESH_TOKEN=\"$new_token\"" >> "$config_path"
             fi
-            echo ">>> [token] CONST_REFRESH_TOKEN 已更新: ${cfg_token:-<空>} -> $db_token"
+            echo ">>> [token] CONST_REFRESH_TOKEN 已更新: ${cfg_token:-<空>} -> $new_token"
             changed=1
         fi
     fi

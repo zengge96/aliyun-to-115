@@ -49,9 +49,14 @@ check_and_install_deps() {
         MISSING_DEPS+=("unzip")
     fi
 
+    # 4. 检查 jq 是否安装(GitHub API 解析用)
+    if ! command -v jq >/dev/null 2>&1; then
+        MISSING_DEPS+=("jq")
+    fi
+
     # 如果都不缺少，直接返回
     if [ ${#MISSING_DEPS[@]} -eq 0 ]; then
-        echo -e "${GREEN}✅ 所有依赖 (SQLite, Curl, Unzip) 已安装!${NC}"
+        echo -e "${GREEN}✅ 所有依赖 (SQLite, Curl, Unzip, Jq) 已安装!${NC}"
         return 0
     fi
 
@@ -70,31 +75,31 @@ check_and_install_deps() {
     if command -v apt-get >/dev/null 2>&1; then
         echo -e "${YELLOW}🔍 检测到 Debian/Ubuntu 系统 (apt-get)...${NC}"
         $SUDO_CMD apt-get update -y
-        $SUDO_CMD apt-get install -y sqlite3 curl unzip || { echo -e "${RED}❌ 安装失败${NC}"; exit 1; }
+        $SUDO_CMD apt-get install -y sqlite3 curl unzip jq || { echo -e "${RED}❌ 安装失败${NC}"; exit 1; }
 
     elif command -v dnf >/dev/null 2>&1; then
         echo -e "${YELLOW}🔍 检测到 Fedora/RHEL 8+ 系统 (dnf)...${NC}"
-        $SUDO_CMD dnf install -y sqlite curl unzip || { echo -e "${RED}❌ 安装失败${NC}"; exit 1; }
+        $SUDO_CMD dnf install -y sqlite curl unzip jq || { echo -e "${RED}❌ 安装失败${NC}"; exit 1; }
 
     elif command -v yum >/dev/null 2>&1; then
         echo -e "${YELLOW}🔍 检测到 CentOS/RHEL 7 系统 (yum)...${NC}"
-        $SUDO_CMD yum install -y sqlite curl unzip || { echo -e "${RED}❌ 安装失败${NC}"; exit 1; }
+        $SUDO_CMD yum install -y sqlite curl unzip jq || { echo -e "${RED}❌ 安装失败${NC}"; exit 1; }
 
     elif command -v pacman >/dev/null 2>&1; then
         echo -e "${YELLOW}🔍 检测到 Arch Linux 系统 (pacman)...${NC}"
-        $SUDO_CMD pacman -Sy --noconfirm sqlite curl unzip || { echo -e "${RED}❌ 安装失败${NC}"; exit 1; }
+        $SUDO_CMD pacman -Sy --noconfirm sqlite curl unzip jq || { echo -e "${RED}❌ 安装失败${NC}"; exit 1; }
 
     elif command -v zypper >/dev/null 2>&1; then
         echo -e "${YELLOW}🔍 检测到 openSUSE 系统 (zypper)...${NC}"
-        $SUDO_CMD zypper install -y sqlite3 curl unzip || { echo -e "${RED}❌ 安装失败${NC}"; exit 1; }
+        $SUDO_CMD zypper install -y sqlite3 curl unzip jq || { echo -e "${RED}❌ 安装失败${NC}"; exit 1; }
 
     elif command -v apk >/dev/null 2>&1; then
         echo -e "${YELLOW}🔍 检测到 Alpine Linux 系统 (apk)...${NC}"
-        $SUDO_CMD apk add sqlite curl unzip || { echo -e "${RED}❌ 安装失败${NC}"; exit 1; }
+        $SUDO_CMD apk add sqlite curl unzip jq || { echo -e "${RED}❌ 安装失败${NC}"; exit 1; }
 
     elif command -v brew >/dev/null 2>&1; then
         echo -e "${YELLOW}🔍 检测到 macOS (Homebrew)...${NC}"
-        brew install sqlite curl unzip || { echo -e "${RED}❌ 安装失败${NC}"; exit 1; }
+        brew install sqlite curl unzip jq || { echo -e "${RED}❌ 安装失败${NC}"; exit 1; }
 
     else
         echo -e "${RED}❌ 错误: 无法识别当前系统的包管理器，请手动安装 SQLite, Curl 和 Unzip。${NC}"
@@ -106,9 +111,10 @@ check_and_install_deps() {
     command -v sqlite3 >/dev/null 2>&1 || FINAL_CHECK=1
     command -v curl >/dev/null 2>&1 || FINAL_CHECK=1
     command -v unzip >/dev/null 2>&1 || FINAL_CHECK=1
+    command -v jq >/dev/null 2>&1 || FINAL_CHECK=1
 
     if [ $FINAL_CHECK -eq 0 ]; then
-        echo -e "${GREEN}🎉 所有依赖 (SQLite, Curl, Unzip) 安装成功!${NC}"
+        echo -e "${GREEN}🎉 所有依赖 (SQLite, Curl, Unzip, Jq) 安装成功!${NC}"
     else
         echo -e "${RED}❌ 错误: 依赖安装后仍有组件无法调用，请检查环境路径。${NC}"
         exit 1
@@ -269,6 +275,8 @@ init_db() {
         local pid=$!
         sleep "$INIT_WAIT_TIME"
         kill "$pid" 2>/dev/null
+        pkill -f "$OPENLIST_BIN" 2>/dev/null
+        sleep 2
         wait "$pid" 2>/dev/null
         "$OPENLIST_BIN" admin set "$CONST_ADMIN_PASS" >/dev/null 2>&1 &
     fi
@@ -320,7 +328,7 @@ download_and_import_115_share_list() {
 
             [ "$root_folder_id" == "root" ] && root_folder_id=""
 
-            sqlite3 "$DB_PATH" <<EOF
+            sqlite3 -cmd ".timeout 30000" "$DB_PATH" <<EOF
 INSERT INTO x_storages VALUES(NULL,'/🏷️我的115分享/$mount_path',0,'115 Share',86400,'','work','{"cookie":"$ESC_115_COOKIE","root_folder_id":"$root_folder_id","qrcode_token":"","qrcode_source":"linux","page_size":1000,"limit_rate":0.5,"share_code":"$share_id","receive_code":"$share_pwd"}','','2022-09-29 20:14:52.313982364+00:00',0,0,0,'name','ASC','front',0,'302_redirect',0,'',0);
 EOF
         done < "$LIST_FILE"
@@ -510,14 +518,14 @@ COMMIT;
 EOF
 
     # 第一步：执行核心存储转换（有严格事务保护）
-    sqlite3 "$DB_PATH" < "$TMP_SQL"
+    sqlite3 -cmd ".timeout 30000" "$DB_PATH" < "$TMP_SQL"
     SQL_RET=$?
 
     # 第二步：处理 Setting 配置，完全模拟原版 Python 的 try...except: pass （使用 2>/dev/null 屏蔽因列数不同的报错）
-    grep -i "^INSERT INTO x_setting_items" "$INPUT_SQL" | sqlite3 "$DB_PATH" 2>/dev/null
+    grep -i "^INSERT INTO x_setting_items" "$INPUT_SQL" | sqlite3 -cmd ".timeout 30000" "$DB_PATH" 2>/dev/null
 
 # 设置 filename_char_mapping（默认 / → |，可在 CONFIG 区修改 CONST_FILENAME_CHAR_MAPPING）
-sqlite3 "$DB_PATH" <<-EOF
+sqlite3 -cmd ".timeout 30000" "$DB_PATH" <<-EOF
 INSERT OR REPLACE INTO x_setting_items(key,value,type,"group",flag) VALUES('filename_char_mapping','${CONST_FILENAME_CHAR_MAPPING}','text',4,0);
 EOF
 

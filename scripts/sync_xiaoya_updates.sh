@@ -234,8 +234,7 @@ sync_tokens_from_db() {
             done <<< "$all_open"
             if [ -n "$new_open" ]; then
                 sed -i "s#^CONST_REFRESH_TOKEN_OPEN=.*#CONST_REFRESH_TOKEN_OPEN=\"$new_open\"#" "$config_path"
-                //todo:只提示已更新，不给出具体更新的值，因为太长了。“>>> [token] CONST_REFRESH_TOKEN_OPEN 已更新”这样就行了。
-                echo ">>> [token] CONST_REFRESH_TOKEN_OPEN 已更新: ${cfg_open:-<空>} -> $new_open"
+                echo ">>> [token] CONST_REFRESH_TOKEN_OPEN 已更新"
                 changed=1
             fi
         fi
@@ -255,7 +254,7 @@ sync_tokens_from_db() {
             done <<< "$all_token"
             if [ -n "$new_token" ]; then
                 sed -i "s#^CONST_REFRESH_TOKEN=.*#CONST_REFRESH_TOKEN=\"$new_token\"#" "$config_path"
-                echo ">>> [token] CONST_REFRESH_TOKEN 已更新: ${cfg_token:-<空>} -> $new_token"
+                echo ">>> [token] CONST_REFRESH_TOKEN 已更新"
                 changed=1
             fi
         fi

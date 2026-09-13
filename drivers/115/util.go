@@ -488,11 +488,16 @@ func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.Upload
 		readWg.Add(1)
 		go func() {
 			defer readWg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					errCh <- fmt.Errorf("read goroutine panic recovered: %v", r)
+				}
+			}()
 			for job := range jobsCh {
 				chunk := job.Chunk
 				buf := make([]byte, chunk.Size)
 				var readErr error
-				maxReadRetries := 3
+				maxReadRetries := 10
 
 				// 读取重试机制
 				for retry := 0; retry < maxReadRetries; retry++ {
@@ -566,7 +571,7 @@ func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.Upload
 				var uploadErr error
 
 				// 上传重试机制
-				for retry := 0; retry < 3; retry++ {
+				for retry := 0; retry < 10; retry++ {
 					select {
 					case <-ctx.Done():
 						return 
@@ -653,18 +658,22 @@ func chunksProducer(ch chan oss.FileChunk, chunks []oss.FileChunk) {
 }
 
 func SplitFile(fileSize int64) (chunks []oss.FileChunk, err error) {
+	// 默认 10000 片；仅当文件 <9GB 时按 <iGB 分成 i*1000 片。
+	// 修复边界 bug：原实现当文件大小恰好等于 9GB 时，两个 if 分支都漏掉
+	// （<9GB 不成立、>9GB 也不成立），导致 chunks 为空，下一行 chunks[0] 越界 panic。
+	// 这里用默认值兜底，保证任何大小都能产出分片。
+	chunkNum := 10000
 	for i := int64(1); i < 10; i++ {
 		if fileSize < i*utils.GB { // 文件大小小于iGB时分为i*1000片
-			if chunks, err = SplitFileByPartNum(fileSize, int(i*1000)); err != nil {
-				return
-			}
+			chunkNum = int(i * 1000)
 			break
 		}
 	}
-	if fileSize > 9*utils.GB { // 文件大小大于9GB时分为10000片
-		if chunks, err = SplitFileByPartNum(fileSize, 10000); err != nil {
-			return
-		}
+	if chunks, err = SplitFileByPartNum(fileSize, chunkNum); err != nil {
+		return
+	}
+	if len(chunks) == 0 { // 防御：理论上不会发生，避免后续越界
+		return nil, errors.New("split file: no chunk produced")
 	}
 	// 单个分片大小不能小于100KB
 	if chunks[0].Size < 100*utils.KB {

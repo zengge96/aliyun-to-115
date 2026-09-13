@@ -558,6 +558,40 @@ func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.Upload
 	completedNum := atomic.Int32{}
 	var tokenMutex sync.RWMutex
 
+	// ==================== 上传进度监控（每10分钟打印一次，含平均速率） ====================
+	uploadStart := time.Now()
+	var uploadedBytes atomic.Int64 // 累计已成功上传的字节数（仅统计用，不参与业务）
+	go func() {
+		tick := time.NewTicker(10 * time.Minute)
+		defer tick.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case now := <-tick.C:
+				n := completedNum.Load()
+				done := uploadedBytes.Load()
+				if n == 0 || done == 0 {
+					continue // 尚无成功上传的分片，跳过本次
+				}
+				elapsedSec := now.Sub(uploadStart).Seconds()
+				if elapsedSec <= 0 {
+					continue
+				}
+				rate := float64(done) / elapsedSec / 1048576.0 // MB/s
+				pct := float64(n) * 100.0 / float64(len(chunks))
+				eta := "未知"
+				if rate > 0 {
+					remainSec := float64(fileSize-done) / rate / 1048576.0
+					eta = (time.Duration(remainSec) * time.Second).Round(time.Second).String()
+				}
+				fmt.Printf("[aliyun_to_115] 上传进度: file=%s 已传 %.1f%% (%d/%d片, %s) 平均速率=%.2f MB/s 已用=%s 预估剩余=%s\n",
+					s.GetName(), pct, n, len(chunks), humanBytes(done), rate,
+					time.Since(uploadStart).Round(time.Second), eta)
+			}
+		}
+	}()
+
 	for i := 0; i < writeThreadsNum; i++ {
 		go func() {
 			defer func() {
@@ -615,6 +649,7 @@ func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.Upload
 				}
 
 				num := completedNum.Add(1)
+				uploadedBytes.Add(chunk.Size)
 				up(float64(num) * 100.0 / float64(len(chunks)))
 
 				select {
@@ -680,6 +715,15 @@ LOOP:
 		return nil, err
 	}
 
+	// [统计] 上传完成：总耗时与平均速率
+	elapsed := time.Since(uploadStart)
+	rate := 0.0
+	if sec := elapsed.Seconds(); sec > 0 {
+		rate = float64(fileSize) / sec / 1048576.0
+	}
+	fmt.Printf("[aliyun_to_115] 上传完成: file=%s 大小=%s 分片=%d 用时=%s 平均速率=%.2f MB/s\n",
+		s.GetName(), humanBytes(fileSize), len(chunks), elapsed.Round(time.Second), rate)
+
 	var uploadResult UploadResult
 	if err = json.Unmarshal(bodyBytes, &uploadResult); err != nil {
 		return nil, err
@@ -691,6 +735,20 @@ func chunksProducer(ch chan oss.FileChunk, chunks []oss.FileChunk) {
 	for _, chunk := range chunks {
 		ch <- chunk
 	}
+}
+
+// humanBytes 将字节数格式化为人类可读的大小（B/KB/MB/GB/TB）。
+func humanBytes(b int64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.2f %cB", float64(b)/float64(div), "KMGTPE"[exp])
 }
 
 func SplitFile(fileSize int64) (chunks []oss.FileChunk, err error) {

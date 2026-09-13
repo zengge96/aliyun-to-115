@@ -585,14 +585,30 @@ func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.Upload
 					currentToken := ossToken
 					tokenMutex.RUnlock()
 
+					// [诊断] 上传分片：记录耗时 + 60s 挂死看门狗(静默断流时告警)
+					upStart := time.Now()
+					upDone := make(chan struct{})
+					go func() {
+						select {
+						case <-upDone:
+						case <-time.After(60 * time.Second):
+							fmt.Printf("[aliyun_to_115] ⚠ 上传分片疑似挂死>60s: file=%s chunk=%d size=%d\n", s.GetName(), chunk.Number, chunk.Size)
+						}
+					}()
 					part, uploadErr = bucket.UploadPart(imur, driver.NewLimitedUploadStream(ctx, bytes.NewReader(buf)),
 						chunk.Size, chunk.Number, driver115.OssOption(params, currentToken)...)
+					close(upDone)
+					if uploadErr != nil {
+						fmt.Printf("[aliyun_to_115] 上传分片失败(第%d/%d次): file=%s chunk=%d size=%d err=%v (耗时%v)\n",
+							retry+1, 10, s.GetName(), chunk.Number, chunk.Size, uploadErr, time.Since(upStart).Round(time.Millisecond))
+					}
 					if uploadErr == nil {
 						break 
 					}
 				}
 
 				if uploadErr != nil {
+					fmt.Printf("[aliyun_to_115] 上传分片最终失败: file=%s chunk=%d size=%d err=%v\n", s.GetName(), chunk.Number, chunk.Size, uploadErr)
 					errCh <- errors.Wrap(uploadErr, fmt.Sprintf("上传 %s 的第%d个分片时出现错误：%v", s.GetName(), chunk.Number, uploadErr))
 					return 
 				}

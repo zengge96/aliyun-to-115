@@ -512,6 +512,8 @@ func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.Upload
 						readErr = nil
 						break
 					}
+					fmt.Printf("[aliyun_to_115] 读分片失败(第%d/%d次): file=%s chunk=%d off=%d size=%d err=%v\n",
+						retry+1, maxReadRetries, s.GetName(), chunk.Number, chunk.Offset, chunk.Size, readErr)
 
 					if retry < maxReadRetries-1 {
 						select {
@@ -523,6 +525,7 @@ func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.Upload
 				}
 
 				if readErr != nil {
+					fmt.Printf("[aliyun_to_115] 读分片最终失败: file=%s chunk=%d err=%v\n", s.GetName(), chunk.Number, readErr)
 					errCh <- errors.Wrap(readErr, fmt.Sprintf("读取 %s 的第%d个分片失败(已重试%d次)", s.GetName(), chunk.Number, maxReadRetries))
 					return
 				}

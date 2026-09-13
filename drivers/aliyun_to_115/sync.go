@@ -1229,7 +1229,11 @@ func (f *urlFileStreamer) RangeRead(ra http_range.Range) (io.Reader, error) {
 	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", ra.Start, ra.Start+ra.Length-1))
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
+		fmt.Printf("[urlread] RangeRead 请求失败: ra=%d-%d err=%v url=%s\n", ra.Start, ra.Start+ra.Length-1, err, f.url)
 		return nil, err
+	}
+	if resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK {
+		fmt.Printf("[urlread] RangeRead 响应非200/206: ra=%d-%d status=%d url=%s\n", ra.Start, ra.Start+ra.Length-1, resp.StatusCode, f.url)
 	}
 	return resp.Body, nil
 }
@@ -1271,12 +1275,26 @@ func (v *VirtualFile) ReadAt(p []byte, off int64) (n int, err error) {
 		return 0, err
 	}
 	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", off, endPos))
+
+	// [诊断] 记录耗时 + 挂死看门狗：若请求>60s 无返回(疑似断流/连接挂起但未报错)则打印告警
+	start := time.Now()
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-done:
+		case <-time.After(60 * time.Second):
+			fmt.Printf("[urlread] ⚠ 读源请求疑似挂死>60s: off=%d len=%d url=%s\n", off, int64(len(p)), v.url)
+		}
+	}()
 	resp, err := v.client.Do(req)
+	close(done)
 	if err != nil {
+		fmt.Printf("[urlread] 读源请求失败: off=%d len=%d err=%v (耗时%v) url=%s\n", off, int64(len(p)), err, time.Since(start).Round(time.Millisecond), v.url)
 		return 0, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK {
+		fmt.Printf("[urlread] 读源响应非200/206: off=%d len=%d status=%d url=%s\n", off, int64(len(p)), resp.StatusCode, v.url)
 		return 0, fmt.Errorf("http error: %d", resp.StatusCode)
 	}
 
@@ -1285,6 +1303,9 @@ func (v *VirtualFile) ReadAt(p []byte, off int64) (n int, err error) {
 		// Server returned fewer bytes than requested (e.g., CDN range limit)
 		// n contains actual bytes read
 		err = nil
+	}
+	if err != nil {
+		fmt.Printf("[urlread] 读源读取失败: off=%d len=%d 实读=%d err=%v (耗时%v)\n", off, int64(len(p)), n, err, time.Since(start).Round(time.Millisecond))
 	}
 	return n, err
 }

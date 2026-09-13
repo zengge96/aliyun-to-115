@@ -497,7 +497,7 @@ func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.Upload
 				chunk := job.Chunk
 				buf := make([]byte, chunk.Size)
 				var readErr error
-				maxReadRetries := 10
+				maxReadRetries := 3
 
 				// 读取重试机制
 				for retry := 0; retry < maxReadRetries; retry++ {
@@ -574,7 +574,7 @@ func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.Upload
 				var uploadErr error
 
 				// 上传重试机制
-				for retry := 0; retry < 10; retry++ {
+				for retry := 0; retry < 3; retry++ {
 					select {
 					case <-ctx.Done():
 						return 
@@ -583,6 +583,7 @@ func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.Upload
 
 					tokenMutex.RLock()
 					currentToken := ossToken
+					currentBucket := bucket
 					tokenMutex.RUnlock()
 
 					// [诊断] 上传分片：记录耗时 + 60s 挂死看门狗(静默断流时告警)
@@ -595,12 +596,12 @@ func (d *Pan115) UploadByMultipart(ctx context.Context, params *driver115.Upload
 							fmt.Printf("[aliyun_to_115] ⚠ 上传分片疑似挂死>60s: file=%s chunk=%d size=%d\n", s.GetName(), chunk.Number, chunk.Size)
 						}
 					}()
-					part, uploadErr = bucket.UploadPart(imur, driver.NewLimitedUploadStream(ctx, bytes.NewReader(buf)),
+					part, uploadErr = currentBucket.UploadPart(imur, driver.NewLimitedUploadStream(ctx, bytes.NewReader(buf)),
 						chunk.Size, chunk.Number, driver115.OssOption(params, currentToken)...)
 					close(upDone)
 					if uploadErr != nil {
 						fmt.Printf("[aliyun_to_115] 上传分片失败(第%d/%d次): file=%s chunk=%d size=%d err=%v (耗时%v)\n",
-							retry+1, 10, s.GetName(), chunk.Number, chunk.Size, uploadErr, time.Since(upStart).Round(time.Millisecond))
+							retry+1, 3, s.GetName(), chunk.Number, chunk.Size, uploadErr, time.Since(upStart).Round(time.Millisecond))
 					}
 					if uploadErr == nil {
 						break 
@@ -644,8 +645,24 @@ LOOP:
 			if tErr != nil {
 				return nil, errors.Wrap(tErr, "定时刷新token时出现错误")
 			}
+			// [修复] 刷新令牌时必须同步重建 OSS client/bucket，
+			// 使签名凭证(AccessKeyID/Secret)与新 SecurityToken 保持一致，
+			// 否则用旧 AK/SK 签名 + 新 token 会被 OSS 拒绝(InvalidSecurityToken)。
+			// 复用 uploadId，multipart 可跨 token 刷新继续上传。
+			newClient, cErr := netutil.NewOSSClient(driver115.OSSEndpoint, newToken.AccessKeyID, newToken.AccessKeySecret, oss.EnableMD5(true), oss.EnableCRC(true))
+			if cErr != nil {
+				return nil, cErr
+			}
+			newBucket, bErr := newClient.Bucket(params.Bucket)
+			if bErr != nil {
+				return nil, bErr
+			}
+			// [诊断] 记录令牌刷新前后信息，便于确认 Expiration 与 AK 是否变化
+			fmt.Printf("[aliyun_to_115] OSS令牌刷新: old_exp=%v new_exp=%v old_ak=%s new_ak=%s\n",
+				ossToken.Expiration, newToken.Expiration, ossToken.AccessKeyID, newToken.AccessKeyID)
 			tokenMutex.Lock()
 			ossToken = newToken
+			bucket = newBucket
 			tokenMutex.Unlock()
 		case <-quit:
 			break LOOP

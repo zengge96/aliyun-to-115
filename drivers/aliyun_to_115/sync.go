@@ -144,7 +144,7 @@ func clearBreakpoint(db *sql.DB, name string) {
 }
 
 // 读源 HTTP 客户端：统一超时，防止连接挂起时永久阻塞（断流保护）
-var urlReadHTTPClient = &http.Client{Timeout: 24 * time.Hour}
+var urlReadHTTPClient = &http.Client{Timeout: time.Hour}
 
 func selfTerminate() {
 	p, _ := os.FindProcess(os.Getpid())
@@ -1351,7 +1351,7 @@ func (f *urlFileStreamer) CacheFullAndWriter(up *model.UpdateProgress, w io.Writ
 	// 	resp.Body.Close()
 	// }
 
-	httpClient := &http.Client{Timeout: 24 * time.Hour}
+	httpClient := &http.Client{Timeout: time.Hour}
 
 	vf := &VirtualFile{
 		url:    f.url,

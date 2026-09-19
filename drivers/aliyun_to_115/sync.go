@@ -1279,22 +1279,19 @@ func (v *VirtualFile) ReadAt(p []byte, off int64) (n int, err error) {
 	}
 	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", off, endPos))
 
-	// [诊断] 记录耗时 + 挂死看门狗：若请求>60s 无返回(疑似断流/连接挂起但未报错)则强制中断
+	// [诊断] 记录耗时 + 挂死看门狗：若请求>60s 无返回(疑似断流/连接挂起但未报错)则打印告警
+	// （不主动掐断，靠 http client 的 1h 超时统一兜底退出，避免误杀大文件断点续传）
 	start := time.Now()
-	reqCtx, cancel := context.WithCancel(v.ctx)
-	req = req.WithContext(reqCtx)
 	done := make(chan struct{})
 	go func() {
 		select {
 		case <-done:
 		case <-time.After(60 * time.Second):
-			fmt.Printf("[urlread] ⚠ 读源请求疑似挂死>60s，强制取消: off=%d len=%d url=%s\n", off, int64(len(p)), v.url)
-			cancel()
+			fmt.Printf("[urlread] ⚠ 读源请求疑似挂死>60s: off=%d len=%d url=%s\n", off, int64(len(p)), v.url)
 		}
 	}()
 	resp, err := v.client.Do(req)
 	close(done)
-	cancel()
 	if err != nil {
 		fmt.Printf("[urlread] 读源请求失败: off=%d len=%d err=%v (耗时%v) url=%s\n", off, int64(len(p)), err, time.Since(start).Round(time.Millisecond), v.url)
 		return 0, err

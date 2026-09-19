@@ -143,6 +143,9 @@ func clearBreakpoint(db *sql.DB, name string) {
 	}
 }
 
+// 读源 HTTP 客户端：统一超时，防止连接挂起时永久阻塞（断流保护）
+var urlReadHTTPClient = &http.Client{Timeout: 5 * time.Minute}
+
 func selfTerminate() {
 	p, _ := os.FindProcess(os.Getpid())
 	p.Signal(syscall.SIGTERM)
@@ -1206,7 +1209,7 @@ func newUrlFileStreamer(name string, size int64, sha1Str, url string) *urlFileSt
 func (f *urlFileStreamer) Read(p []byte) (n int, err error) {
 	if f.reader == nil {
 		req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, f.url, nil)
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := urlReadHTTPClient.Do(req)
 		if err != nil {
 			return 0, err
 		}
@@ -1227,7 +1230,7 @@ func (f *urlFileStreamer) Close() error {
 func (f *urlFileStreamer) RangeRead(ra http_range.Range) (io.Reader, error) {
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, f.url, nil)
 	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", ra.Start, ra.Start+ra.Length-1))
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := urlReadHTTPClient.Do(req)
 	if err != nil {
 		fmt.Printf("[urlread] RangeRead 请求失败: ra=%d-%d err=%v url=%s\n", ra.Start, ra.Start+ra.Length-1, err, f.url)
 		return nil, err
@@ -1276,18 +1279,22 @@ func (v *VirtualFile) ReadAt(p []byte, off int64) (n int, err error) {
 	}
 	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", off, endPos))
 
-	// [诊断] 记录耗时 + 挂死看门狗：若请求>60s 无返回(疑似断流/连接挂起但未报错)则打印告警
+	// [诊断] 记录耗时 + 挂死看门狗：若请求>60s 无返回(疑似断流/连接挂起但未报错)则强制中断
 	start := time.Now()
+	reqCtx, cancel := context.WithCancel(v.ctx)
+	req = req.WithContext(reqCtx)
 	done := make(chan struct{})
 	go func() {
 		select {
 		case <-done:
 		case <-time.After(60 * time.Second):
-			fmt.Printf("[urlread] ⚠ 读源请求疑似挂死>60s: off=%d len=%d url=%s\n", off, int64(len(p)), v.url)
+			fmt.Printf("[urlread] ⚠ 读源请求疑似挂死>60s，强制取消: off=%d len=%d url=%s\n", off, int64(len(p)), v.url)
+			cancel()
 		}
 	}()
 	resp, err := v.client.Do(req)
 	close(done)
+	cancel()
 	if err != nil {
 		fmt.Printf("[urlread] 读源请求失败: off=%d len=%d err=%v (耗时%v) url=%s\n", off, int64(len(p)), err, time.Since(start).Round(time.Millisecond), v.url)
 		return 0, err
@@ -1344,7 +1351,7 @@ func (f *urlFileStreamer) CacheFullAndWriter(up *model.UpdateProgress, w io.Writ
 	// 	resp.Body.Close()
 	// }
 
-	httpClient := &http.Client{}
+	httpClient := &http.Client{Timeout: 5 * time.Minute}
 
 	vf := &VirtualFile{
 		url:    f.url,

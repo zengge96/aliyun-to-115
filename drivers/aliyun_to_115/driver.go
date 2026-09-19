@@ -41,9 +41,19 @@ type AliyunTo115 struct {
 func (d *AliyunTo115) Config() driver.Config { return config }
 func (d *AliyunTo115) GetAddition() driver.Additional { return &d.Addition }
 
+// exitIfRunOnce 初始化失败时若开启 run_once，则发 SIGTERM 触发主程序优雅退出，
+// 避免进程以常驻服务状态干挂导致 run_once 永不退出。
+func (d *AliyunTo115) exitIfRunOnce(err error) error {
+	if d.RunOnce {
+		fmt.Printf("[aliyun_to_115] 初始化失败且开启 run_once，发送 SIGTERM 退出: %v\n", err)
+		selfTerminate()
+	}
+	return err
+}
+
 func (d *AliyunTo115) Init(ctx context.Context) error {
 	if d.Open115Cookie == "" {
-		return errors.New("open115_cookie is required")
+		return d.exitIfRunOnce(errors.New("open115_cookie is required"))
 	}
 
 	// 初始化内部驱动参数
@@ -54,7 +64,7 @@ func (d *AliyunTo115) Init(ctx context.Context) error {
 	d.p115.Addition.LimitRate = d.LimitRate
 	d.p115.Addition.RootFolderID = d.RootFolderID
 	if err := d.p115.Init(ctx); err != nil {
-		return err
+		return d.exitIfRunOnce(err)
 	}
 
 	// 1. RootFolderID == "auto" 逻辑优化
@@ -62,7 +72,7 @@ func (d *AliyunTo115) Init(ctx context.Context) error {
 		const syncFolderName = "小雅同步"
 		objs, err := d.p115.List(ctx, &model.Object{ID: "0"}, model.ListArgs{})
 		if err != nil {
-			return fmt.Errorf("list root folder failed: %w", err)
+			return d.exitIfRunOnce(fmt.Errorf("list root folder failed: %w", err))
 		}
 
 		var targetID string
@@ -76,7 +86,7 @@ func (d *AliyunTo115) Init(ctx context.Context) error {
 		if targetID == "" {
 			newDir, err := d.p115.MakeDir(ctx, &model.Object{ID: "0"}, syncFolderName)
 			if err != nil {
-				return fmt.Errorf("auto create sync folder failed: %w", err)
+				return d.exitIfRunOnce(fmt.Errorf("auto create sync folder failed: %w", err))
 			}
 			targetID = newDir.GetID()
 			fmt.Printf("[aliyun_to_115] auto created sync folder: %s (%s)\n", syncFolderName, targetID)
@@ -92,7 +102,7 @@ func (d *AliyunTo115) Init(ctx context.Context) error {
 	// 2. 初始化同步客户端
 	p115Client, err := newSync115Client(d.Open115Cookie, d.LimitRate)
 	if err != nil {
-		return err
+		return d.exitIfRunOnce(err)
 	}
 	d.p115Client = p115Client
 
@@ -100,14 +110,14 @@ func (d *AliyunTo115) Init(ctx context.Context) error {
 	d.basePath, _ = os.Getwd()
 	workDBPath := filepath.Join(d.basePath, "data", "work.db")
 	if err := os.MkdirAll(filepath.Join(d.basePath, "data"), 0755); err != nil {
-		return fmt.Errorf("create data dir failed: %w", err)
+		return d.exitIfRunOnce(fmt.Errorf("create data dir failed: %w", err))
 	}
 	d.syncCacheDB, err = sql.Open("sqlite3", workDBPath)
 	if err != nil {
-		return fmt.Errorf("open work.db failed: %w", err)
+		return d.exitIfRunOnce(fmt.Errorf("open work.db failed: %w", err))
 	}
 	if _, err := d.syncCacheDB.Exec(`CREATE TABLE IF NOT EXISTS aliyun_sync_cache (cache_key TEXT PRIMARY KEY, synced_at DATETIME DEFAULT CURRENT_TIMESTAMP)`); err != nil {
-		return fmt.Errorf("create cache table failed: %w", err)
+		return d.exitIfRunOnce(fmt.Errorf("create cache table failed: %w", err))
 	}
 
 	// 统计 DB 中已有记录数（不再加载到内存）

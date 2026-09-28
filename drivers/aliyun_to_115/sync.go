@@ -981,13 +981,20 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 		return err
 	}
 
-	stream := newUrlFileStreamer(path.Base(dstPath), fileSize, sha1Str, link.URL)
-
 	var result model.Obj
 	var uploadErr error
+	var rapidUpload bool
 	start := time.Now()
 	for attempt := 1; attempt <= 3; attempt++ {
-		result, uploadErr = d.p115Client.uploadTo115(ctx, stream, p115DirID)
+		// 方案A：每次尝试重新获取阿里直链（长时间转存后旧直链可能失效），用新 URL 重建 stream
+		link, err = aliyun.Link(ctx, realFile, model.LinkArgs{})
+		if err != nil || link == nil || link.URL == "" {
+			uploadErr = fmt.Errorf("重新获取阿里直链失败 (attempt %d): %v", attempt, err)
+		} else {
+			stream := newUrlFileStreamer(path.Base(dstPath), fileSize, sha1Str, link.URL)
+			rapidUpload = stream.rapidUpload
+			result, uploadErr = d.p115Client.uploadTo115(ctx, stream, p115DirID)
+		}
 		if uploadErr == nil && result != nil {
 			break
 		}
@@ -1003,7 +1010,7 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 		return uploadErr
 	}
 
-	if stream.rapidUpload {
+	if rapidUpload {
 		fmt.Printf("[aliyun_to_115] ⚡ 秒传成功: %s -> %s [%v]\n", srcPath, p115DirStr+"/"+path.Base(dstPath), elapsed)
 		stats.rapid++
 	} else {

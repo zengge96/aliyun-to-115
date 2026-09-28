@@ -989,7 +989,8 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 		// 方案A：每次尝试重新获取阿里直链（长时间转存后旧直链可能失效），用新 URL 重建 stream
 		link, err = aliyun.Link(ctx, realFile, model.LinkArgs{})
 		if err != nil || link == nil || link.URL == "" {
-			uploadErr = fmt.Errorf("重新获取阿里直链失败 (attempt %d): %v", attempt, err)
+			fmt.Printf("[aliyun_to_115] 获取阿里直链失败 [%s]: %v\n", srcPath, err)
+			uploadErr = fmt.Errorf("获取阿里直链失败 (第%d/3次): %v", attempt, err)
 		} else {
 			stream := newUrlFileStreamer(path.Base(dstPath), fileSize, sha1Str, link.URL)
 			result, uploadErr = d.p115Client.uploadTo115(ctx, stream, p115DirID)
@@ -1003,6 +1004,7 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 			break
 		}
 		if attempt < 3 {
+			fmt.Printf("[aliyun_to_115] 上传失败将重试 [%s]: 第%d/3次 %v\n", srcPath, attempt, uploadErr)
 			time.Sleep(1 * time.Second)
 		}
 	}

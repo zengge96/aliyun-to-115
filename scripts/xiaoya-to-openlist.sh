@@ -22,10 +22,20 @@ CONST_TEMP_TRANSFER_FOLDER_ID="root"
 CONST_ADMIN_PASS="12345"
 CONST_FILENAME_CHAR_MAPPING='{"/":"|","#":"|"}' # 文件名特殊字符映射，格式 JSON: {"原字符":"替换字符"}
 MOUNT_PATHS=("/每日更新") # ()表示全部挂载，("/每日更新" "/整理中")表示按需挂载，以具体配置为准
+SOCKS5_PROXY="" # SOCKS5代理，格式 socks5://user:pass@host:port，为空表示不走代理(可在 config.txt 覆盖)
 
 # ================= 辅助函数 =================
 # SQL 转义，防止单引号注入破坏 SQL 语句
 escape_sql() { echo "${1//\'/''}"; }
+
+# 走 SOCKS5 代理执行 curl（SOCKS5_PROXY 为空时不加代理参数）
+curl_proxy() {
+    if [ -n "$SOCKS5_PROXY" ]; then
+        curl -x "$SOCKS5_PROXY" "$@"
+    else
+        curl "$@"
+    fi
+}
 
 check_and_install_deps() {
     # 定义颜色输出
@@ -141,7 +151,7 @@ download_and_extract_sql() {
     mkdir -p "$TARGET_DIR"
 
     echo -e ">>> 正在下载小雅更新包...${NC}"
-    curl -sL -f "$CONST_XIAOYA_URL" -o "$TEMP_ZIP" || {
+    curl_proxy -sL -f "$CONST_XIAOYA_URL" -o "$TEMP_ZIP" || {
         echo -e "${RED}❌ 错误: 下载失败。${NC}"
         exit 1
     }
@@ -178,7 +188,7 @@ download_and_extract_strm() {
     mkdir -p "$TARGET_DIR"
 
     echo -e ">>> strm模式已开启，正在下载strm包...${NC}"
-    curl -sL -f "$CONST_XIAOYA_STRM_URL" -o "$TEMP_ZIP" || {
+    curl_proxy -sL -f "$CONST_XIAOYA_STRM_URL" -o "$TEMP_ZIP" || {
         echo -e "${RED}❌ 错误: 下载失败。${NC}"
         exit 1
     }
@@ -343,7 +353,7 @@ download_and_import_115_share_list() {
     local LIST_FILE="$INPUT_115_SHARE_LIST" 
 
     if [ -n "$CONST_XIAOYA_115_SHARE_URL" ]; then
-        curl -sL -f "$CONST_XIAOYA_115_SHARE_URL" -o "$LIST_FILE"
+        curl_proxy -sL -f "$CONST_XIAOYA_115_SHARE_URL" -o "$LIST_FILE"
     fi
 
     if [ -s "$LIST_FILE" ]; then

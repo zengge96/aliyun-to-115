@@ -20,10 +20,20 @@ CONST_TEMP_TRANSFER_FOLDER_ID="root"
 CONST_ADMIN_PASS="12345"
 CONST_FILENAME_CHAR_MAPPING='{"/":"|","#":"|"}' # 文件名特殊字符映射，格式 JSON: {"原字符":"替换字符"}
 MOUNT_PATHS=() # ()表示全部挂载，("/每日更新" "/整理中")表示按需挂载，以具体配置为准
+SOCKS5_PROXY="" # SOCKS5代理，格式 socks5://user:pass@host:port，为空表示不走代理(可在 config.txt 覆盖)
 
 # ================= 辅助函数 =================
 # SQL 转义，防止单引号注入破坏 SQL 语句
 escape_sql() { echo "${1//\'/''}"; }
+
+# 走 SOCKS5 代理执行 curl（SOCKS5_PROXY 为空时不加代理参数）
+curl_proxy() {
+    if [ -n "$SOCKS5_PROXY" ]; then
+        curl -x "$SOCKS5_PROXY" "$@"
+    else
+        curl "$@"
+    fi
+}
 
 check_and_install_deps() {
     # 定义颜色输出
@@ -139,7 +149,7 @@ download_and_extract_sql() {
     mkdir -p "$TARGET_DIR"
 
     echo -e ">>> 正在下载小雅更新包...${NC}"
-    curl -sL -f "$CONST_XIAOYA_URL" -o "$TEMP_ZIP" || {
+    curl_proxy -sL -f "$CONST_XIAOYA_URL" -o "$TEMP_ZIP" || {
         echo -e "${RED}❌ 错误: 下载失败。${NC}"
         exit 1
     }
@@ -304,7 +314,7 @@ download_and_import_115_share_list() {
     local LIST_FILE="$INPUT_115_SHARE_LIST" 
 
     if [ -n "$CONST_XIAOYA_115_SHARE_URL" ]; then
-        curl -sL -f "$CONST_XIAOYA_115_SHARE_URL" -o "$LIST_FILE"
+        curl_proxy -sL -f "$CONST_XIAOYA_115_SHARE_URL" -o "$LIST_FILE"
     fi
 
     if [ -s "$LIST_FILE" ]; then
@@ -367,14 +377,14 @@ function get_xiaoya_updates() {
     echo "=> 正在查询 GitHub 获取小雅索引数据 Commit 记录..." >&2
     
     # 获取最新版本的 commit SHA
-    local LATEST_SHA=$(curl -s "${API_URL}&per_page=1" | jq -r '.[0].sha')
+    local LATEST_SHA=$(curl_proxy -s "${API_URL}&per_page=1" | jq -r '.[0].sha')
     if [ "$LATEST_SHA" == "null" ] || [ -z "$LATEST_SHA" ]; then
         echo "错误: 无法获取最新 commit，可能是触发了 GitHub API 限制。" >&2
         return 1
     fi
 
     # 利用 until 参数获取距今大于1个月的第一个版本的 commit SHA
-    local OLD_SHA=$(curl -s "${API_URL}&until=${THREE_MONTHS_AGO}&per_page=1" | jq -r '.[0].sha')
+    local OLD_SHA=$(curl_proxy -s "${API_URL}&until=${THREE_MONTHS_AGO}&per_page=1" | jq -r '.[0].sha')
     if [ "$OLD_SHA" == "null" ] || [ -z "$OLD_SHA" ]; then
         echo "错误: 无法获取1个月前的 commit。" >&2
         return 1
@@ -393,8 +403,8 @@ function get_xiaoya_updates() {
     
     echo "=> 正在下载新旧版本的压缩包..." >&2
     local RAW_BASE="https://raw.githubusercontent.com/${REPO}"
-    curl -sL "${RAW_BASE}/${LATEST_SHA}/${FILE_PATH}" -o "${TMP_DIR}/latest.zip"
-    curl -sL "${RAW_BASE}/${OLD_SHA}/${FILE_PATH}" -o "${TMP_DIR}/old.zip"
+    curl_proxy -sL "${RAW_BASE}/${LATEST_SHA}/${FILE_PATH}" -o "${TMP_DIR}/latest.zip"
+    curl_proxy -sL "${RAW_BASE}/${OLD_SHA}/${FILE_PATH}" -o "${TMP_DIR}/old.zip"
 
     echo "=> 正在解压 index.daily.txt..." >&2
     unzip -p "${TMP_DIR}/latest.zip" index.daily.txt > "${TMP_DIR}/latest.txt"

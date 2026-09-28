@@ -992,8 +992,12 @@ func (d *AliyunTo115) processSingleFile(ctx context.Context, srcPath string, dst
 			uploadErr = fmt.Errorf("重新获取阿里直链失败 (attempt %d): %v", attempt, err)
 		} else {
 			stream := newUrlFileStreamer(path.Base(dstPath), fileSize, sha1Str, link.URL)
-			rapidUpload = stream.rapidUpload
 			result, uploadErr = d.p115Client.uploadTo115(ctx, stream, p115DirID)
+			// 必须在 uploadTo115 之后读：秒传标志是由 115 客户端在上传过程中
+			// 通过 SetRapidUpload(true) 回调写进 stream 的，构造完立刻读恒为 false
+			if uploadErr == nil {
+				rapidUpload = stream.rapidUpload
+			}
 		}
 		if uploadErr == nil && result != nil {
 			break

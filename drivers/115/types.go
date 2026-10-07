@@ -30,7 +30,7 @@ type UploadResult struct {
 	driver.BasicResp
 	Data struct {
 		PickCode string `json:"pick_code"`
-		FileSize int    `json:"file_size"`
+		FileSize int64  `json:"file_size"`
 		FileID   string `json:"file_id"`
 		ThumbURL string `json:"thumb_url"`
 		Sha1     string `json:"sha1"`

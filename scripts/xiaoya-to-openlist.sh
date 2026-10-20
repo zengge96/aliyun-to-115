@@ -7,10 +7,6 @@ INPUT_SQL="./xiaoya.sql"
 INPUT_STRM="./strm.txt"
 INPUT_115_SHARE_LIST="./115share_internal.txt"
 INIT_WAIT_TIME=12
-# ===== 网络下载重试（2026-10-20）=====
-# 本脚本不自建重试循环：下载失败就把错误码往上抛，交给外层 while 循环（6 小时后重跑整轮）处理
-# 这里只留 curl 自身的快速重试，用来吃掉几秒级的网络抖动
-NET_CURL_RETRY_TIMES=3
 CONST_XIAOYA_URL="https://github.com/xiaoyaDev/data/raw/refs/heads/main/update.zip"
 CONST_XIAOYA_STRM_URL="https://github.com/xiaoyaDev/data/raw/refs/heads/main/strm.zip"
 CONST_XIAOYA_115_SHARE_URL="https://github.com/xiaoyaDev/data/raw/refs/heads/main/115share_list.txt"
@@ -39,22 +35,6 @@ curl_proxy() {
     else
         curl "$@"
     fi
-}
-
-# 单次下载：curl 自带快速重试 + 记录 HTTP 状态码（不做原地循环，失败就往上抛）
-# 返回 0 = 成功；1 = 网络/5xx 等临时故障（外层循环 6 小时后重试即可）；2 = 4xx（地址失效，重试没用）
-net_get() {
-    local url="$1" out="$2" maxtime="${3:-1800}" code
-    code=$(curl_proxy -sSL -f -w '%{http_code}' \
-            --retry "$NET_CURL_RETRY_TIMES" --retry-delay 5 \
-            --connect-timeout 15 --max-time "$maxtime" \
-            "$url" -o "$out" 2>/dev/null || true)
-    NET_HTTP_CODE="${code:-000}"
-    case "$NET_HTTP_CODE" in
-        2*) return 0 ;;
-        4*) return 2 ;;
-        *)  return 1 ;;
-    esac
 }
 
 check_and_install_deps() {
@@ -171,30 +151,23 @@ download_and_extract_sql() {
     mkdir -p "$TARGET_DIR"
 
     echo -e ">>> 正在下载小雅更新包...${NC}"
+    curl_proxy -sL -f "$CONST_XIAOYA_URL" -o "$TEMP_ZIP" || {
+        echo -e "${RED}❌ 错误: 下载失败。${NC}"
+        exit 1
+    }
 
-    # 先下到临时文件再原子替换，避免失败时把上一版好数据覆盖成空文件
-    net_get "$CONST_XIAOYA_URL" "$TEMP_ZIP" 1800
-    local rc=$?
-    if [ $rc -ne 0 ]; then
-        rm -f "$TEMP_ZIP" "${INPUT_SQL}.new"
-        if [ $rc -eq 2 ]; then
-            echo -e "${RED}❌ 下载失败: HTTP ${NET_HTTP_CODE}（地址可能已失效，重试没用，需要人工检查）${NC}"
-        else
-            echo -e "${RED}❌ 下载失败: HTTP ${NET_HTTP_CODE}（网络/服务端故障，交给外层循环重试）${NC}"
-        fi
-        return 1
-    fi
+    unzip -p "$TEMP_ZIP" "*.sql" > "$INPUT_SQL" || {
+        echo -e "${RED}❌ 错误: 解压失败或压缩包内无 .sql 文件。${NC}"
+        rm -f "$TEMP_ZIP"
+        exit 1
+    }
 
-    if ! unzip -p "$TEMP_ZIP" "*.sql" > "${INPUT_SQL}.new" 2>/dev/null || [ ! -s "${INPUT_SQL}.new" ]; then
-        rm -f "$TEMP_ZIP" "${INPUT_SQL}.new"
-        echo -e "${RED}❌ 解压失败或压缩包内无 .sql 文件${NC}"
-        return 1
-    fi
-
-    mv -f "${INPUT_SQL}.new" "$INPUT_SQL"
     rm -f "$TEMP_ZIP"
-    echo -e "${GREEN}✅ 小雅更新包已就绪: $INPUT_SQL${NC}"
-    return 0
+
+    if [ ! -s "$INPUT_SQL" ]; then
+        echo -e "${RED}❌ 错误: 提取后的文件为空，请检查压缩包内容。${NC}"
+        exit 1
+    fi
 }
 
 download_and_extract_strm() {
@@ -215,29 +188,23 @@ download_and_extract_strm() {
     mkdir -p "$TARGET_DIR"
 
     echo -e ">>> strm模式已开启，正在下载strm包...${NC}"
+    curl_proxy -sL -f "$CONST_XIAOYA_STRM_URL" -o "$TEMP_ZIP" || {
+        echo -e "${RED}❌ 错误: 下载失败。${NC}"
+        exit 1
+    }
 
-    net_get "$CONST_XIAOYA_STRM_URL" "$TEMP_ZIP" 1800
-    local rc=$?
-    if [ $rc -ne 0 ]; then
-        rm -f "$TEMP_ZIP" "${INPUT_STRM}.new"
-        if [ $rc -eq 2 ]; then
-            echo -e "${RED}❌ 下载失败: HTTP ${NET_HTTP_CODE}（地址可能已失效，重试没用，需要人工检查）${NC}"
-        else
-            echo -e "${RED}❌ 下载失败: HTTP ${NET_HTTP_CODE}（网络/服务端故障，交给外层循环重试）${NC}"
-        fi
-        return 1
-    fi
+    unzip -p "$TEMP_ZIP" "*.txt" > "$INPUT_STRM" || {
+        echo -e "${RED}❌ 错误: 解压失败或压缩包内无 .txt 文件。${NC}"
+        rm -f "$TEMP_ZIP"
+        exit 1
+    }
 
-    if ! unzip -p "$TEMP_ZIP" "*.txt" > "${INPUT_STRM}.new" 2>/dev/null || [ ! -s "${INPUT_STRM}.new" ]; then
-        rm -f "$TEMP_ZIP" "${INPUT_STRM}.new"
-        echo -e "${RED}❌ 解压失败或压缩包内无 .txt 文件${NC}"
-        return 1
-    fi
-
-    mv -f "${INPUT_STRM}.new" "$INPUT_STRM"
     rm -f "$TEMP_ZIP"
-    echo -e "${GREEN}✅ strm包已就绪: $INPUT_STRM${NC}"
-    return 0
+
+    if [ ! -s "$INPUT_STRM" ]; then
+        echo -e "${RED}❌ 错误: 提取后的文件为空，请检查压缩包内容。${NC}"
+        exit 1
+    fi
 }
 
 check_configs() {
@@ -386,13 +353,7 @@ download_and_import_115_share_list() {
     local LIST_FILE="$INPUT_115_SHARE_LIST" 
 
     if [ -n "$CONST_XIAOYA_115_SHARE_URL" ]; then
-        # 115分享列表属于可选增强项：失败就沿用旧列表继续，绝不阻断主流程
-        if net_get "$CONST_XIAOYA_115_SHARE_URL" "${LIST_FILE}.new" 300 && [ -s "${LIST_FILE}.new" ]; then
-            mv -f "${LIST_FILE}.new" "$LIST_FILE"
-        else
-            rm -f "${LIST_FILE}.new"
-            echo "!!! 115分享列表下载失败（HTTP ${NET_HTTP_CODE}），跳过本次更新（沿用已有列表继续运行）"
-        fi
+        curl_proxy -sL -f "$CONST_XIAOYA_115_SHARE_URL" -o "$LIST_FILE"
     fi
 
     if [ -s "$LIST_FILE" ]; then
@@ -437,11 +398,10 @@ check_and_install_deps
 load_external_config
 check_configs
 
-# 失败不在这里循环，直接退出，交给外层调度（容器 restart / cron）重跑
-download_and_extract_sql || exit 1
+download_and_extract_sql
 
 if [ "$CONST_STRM_MODE"x = "true"x ]; then
-    download_and_extract_strm || exit 1
+    download_and_extract_strm
 fi
 
 if [ ! -f "$INPUT_SQL" ]; then

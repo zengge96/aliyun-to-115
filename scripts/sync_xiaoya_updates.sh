@@ -7,6 +7,14 @@ INPUT_SQL="./xiaoya.sql"
 INPUT_STRM="./strm.txt"
 INPUT_115_SHARE_LIST="./115share_internal.txt"
 INIT_WAIT_TIME=12
+# ===== 网络失败处理（2026-10-20 新增）=====
+# 网络错误不再 exit 整个脚本，而是原地等待 RETRY_WAIT_SECONDS 秒后重试（21600 = 6 小时）
+RETRY_WAIT_SECONDS=21600
+# 单次 curl 自带的重试次数（网络抖动时先快速重试，避免直接等 6 小时）
+NET_CURL_RETRY_TIMES=3
+# true = 网络失败原地等 6 小时重试（进程不退出）
+# false = 网络失败直接返回失败码，交给外层 while 循环处理
+NET_RETRY_IN_PLACE="true"
 CONST_XIAOYA_URL="https://github.com/xiaoyaDev/data/raw/refs/heads/main/update.zip"
 CONST_XIAOYA_115_SHARE_URL="https://github.com/xiaoyaDev/data/raw/refs/heads/main/115share_list.txt"
 
@@ -33,6 +41,21 @@ curl_proxy() {
     else
         curl "$@"
     fi
+}
+
+# 网络失败统一处理：默认不退出进程，打印时间戳后睡 6 小时再重试
+# 返回 1 = 关闭了原地重试，交给外层循环；返回 2 = 已睡满等待期，可以重新尝试
+net_fail_wait() {
+    local reason="${1:-网络请求}"
+    local wait_sec="${RETRY_WAIT_SECONDS:-21600}"
+    if [ "${NET_RETRY_IN_PLACE:-true}"x = "falsex" ]; then
+        echo -e "\033[0;31m❌ ${reason}失败（未开启原地重试，交由外层循环处理）\033[0m"
+        return 1
+    fi
+    echo -e "\033[0;31m❌ ${reason}失败\033[0m"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] 网络错误不退出，等待 $((wait_sec/3600)) 小时后重试 ..."
+    sleep "$wait_sec"
+    return 2
 }
 
 check_and_install_deps() {
@@ -148,24 +171,27 @@ download_and_extract_sql() {
     local TARGET_DIR=$(dirname "$INPUT_SQL")
     mkdir -p "$TARGET_DIR"
 
-    echo -e ">>> 正在下载小雅更新包...${NC}"
-    curl_proxy -sL -f "$CONST_XIAOYA_URL" -o "$TEMP_ZIP" || {
-        echo -e "${RED}❌ 错误: 下载失败。${NC}"
-        exit 1
-    }
+    local attempt=0
+    while true; do
+        attempt=$((attempt+1))
+        echo -e ">>> 正在下载小雅更新包...（第 ${attempt} 轮）${NC}"
 
-    unzip -p "$TEMP_ZIP" "*.sql" > "$INPUT_SQL" || {
-        echo -e "${RED}❌ 错误: 解压失败或压缩包内无 .sql 文件。${NC}"
-        rm -f "$TEMP_ZIP"
-        exit 1
-    }
+        # 先下到临时文件再原子替换，避免失败时把上一版好数据覆盖成空文件
+        if curl_proxy -sL -f --retry "$NET_CURL_RETRY_TIMES" --retry-delay 5 \
+                 --connect-timeout 15 --max-time 1800 \
+                 "$CONST_XIAOYA_URL" -o "$TEMP_ZIP" && [ -s "$TEMP_ZIP" ] \
+           && unzip -p "$TEMP_ZIP" "*.sql" > "${INPUT_SQL}.new" && [ -s "${INPUT_SQL}.new" ]; then
+            mv -f "${INPUT_SQL}.new" "$INPUT_SQL"
+            rm -f "$TEMP_ZIP"
+            echo -e "${GREEN}✅ 小雅更新包已就绪: $INPUT_SQL${NC}"
+            return 0
+        fi
 
-    rm -f "$TEMP_ZIP"
-
-    if [ ! -s "$INPUT_SQL" ]; then
-        echo -e "${RED}❌ 错误: 提取后的文件为空，请检查压缩包内容。${NC}"
-        exit 1
-    fi
+        rm -f "$TEMP_ZIP" "${INPUT_SQL}.new"
+        net_fail_wait "小雅更新包下载/解压"
+        [ $? -eq 1 ] && return 1
+        # 睡满等待期后回到循环顶部重新下载，进程全程不退出
+    done
 }
 
 check_configs() {
@@ -314,7 +340,15 @@ download_and_import_115_share_list() {
     local LIST_FILE="$INPUT_115_SHARE_LIST" 
 
     if [ -n "$CONST_XIAOYA_115_SHARE_URL" ]; then
-        curl_proxy -sL -f "$CONST_XIAOYA_115_SHARE_URL" -o "$LIST_FILE"
+        # 115分享列表属于可选增强项：失败就沿用旧列表继续，绝不阻断主流程
+        if curl_proxy -sL -f --retry "$NET_CURL_RETRY_TIMES" --retry-delay 5 \
+                --connect-timeout 15 --max-time 300 \
+                "$CONST_XIAOYA_115_SHARE_URL" -o "${LIST_FILE}.new" && [ -s "${LIST_FILE}.new" ]; then
+            mv -f "${LIST_FILE}.new" "$LIST_FILE"
+        else
+            rm -f "${LIST_FILE}.new"
+            echo "!!! 115分享列表下载失败，跳过本次更新（沿用已有列表继续运行）"
+        fi
     fi
 
     if [ -s "$LIST_FILE" ]; then

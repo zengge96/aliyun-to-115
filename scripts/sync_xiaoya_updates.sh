@@ -39,19 +39,24 @@ curl_proxy() {
     fi
 }
 
-# 单次下载：curl 自带快速重试 + 记录 HTTP 状态码（不做原地循环，失败就往上抛）
-# 返回 0 = 成功；1 = 网络/5xx 等临时故障（外层循环 6 小时后重试即可）；2 = 4xx（地址失效，重试没用）
+# 单次下载：curl 自带快速重试（不做原地循环，失败就往上抛）
+# 成败只看 curl 自己的退出码：3xx 是重定向（curl 已用 -L 跟过去），不算错误
+# 返回 0 = 成功；1 = 网络/服务端临时故障（外层循环 6 小时后重试即可）；2 = 4xx（地址失效，重试没用）
 net_get() {
-    local url="$1" out="$2" maxtime="${3:-1800}" code
+    local url="$1" out="$2" maxtime="${3:-1800}" code rc
     code=$(curl_proxy -sSL -f -w '%{http_code}' \
             --retry "$NET_CURL_RETRY_TIMES" --retry-delay 5 \
             --connect-timeout 15 --max-time "$maxtime" \
-            "$url" -o "$out" 2>/dev/null || true)
+            "$url" -o "$out" 2>/dev/null)
+    rc=$?
     NET_HTTP_CODE="${code:-000}"
+    NET_CURL_RC="$rc"
+
+    [ $rc -eq 0 ] && return 0        # 2xx / 3xx 都算成功
+
     case "$NET_HTTP_CODE" in
-        2*) return 0 ;;
-        4*) return 2 ;;
-        *)  return 1 ;;
+        4*) return 2 ;;              # 明确的 4xx：地址本身没了
+        *)  return 1 ;;              # 连不上/超时/5xx：等下一轮
     esac
 }
 
@@ -176,9 +181,9 @@ download_and_extract_sql() {
     if [ $rc -ne 0 ]; then
         rm -f "$TEMP_ZIP" "${INPUT_SQL}.new"
         if [ $rc -eq 2 ]; then
-            echo -e "${RED}❌ 下载失败: HTTP ${NET_HTTP_CODE}（地址可能已失效，重试没用，需要人工检查）${NC}"
+            echo -e "${RED}❌ 下载失败: curl rc=${NET_CURL_RC}, HTTP ${NET_HTTP_CODE}（地址可能已失效，重试没用，需要人工检查）${NC}"
         else
-            echo -e "${RED}❌ 下载失败: HTTP ${NET_HTTP_CODE}（网络/服务端故障，交给外层循环重试）${NC}"
+            echo -e "${RED}❌ 下载失败: curl rc=${NET_CURL_RC}, HTTP ${NET_HTTP_CODE}（网络/服务端故障，交给外层循环重试）${NC}"
         fi
         return 1
     fi
@@ -346,7 +351,7 @@ download_and_import_115_share_list() {
             mv -f "${LIST_FILE}.new" "$LIST_FILE"
         else
             rm -f "${LIST_FILE}.new"
-            echo "!!! 115分享列表下载失败（HTTP ${NET_HTTP_CODE}），跳过本次更新（沿用已有列表继续运行）"
+            echo "!!! 115分享列表下载失败（curl rc=${NET_CURL_RC}, HTTP ${NET_HTTP_CODE}），跳过本次更新（沿用已有列表继续运行）"
         fi
     fi
 

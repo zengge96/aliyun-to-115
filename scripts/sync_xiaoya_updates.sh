@@ -202,7 +202,7 @@ download_and_extract_sql() {
             local hint envpx
             hint=$(net_rc_hint "$NET_CURL_RC")
             envpx="${https_proxy:-${HTTPS_PROXY:-${ALL_PROXY:-${all_proxy:-${http_proxy:-${HTTP_PROXY:-}}}}}}"
-            echo -e "${RED}❌ 下载失败: curl rc=${NET_CURL_RC}, HTTP ${NET_HTTP_CODE}（${hint}）${NC}"
+            echo -e "${RED}❌ 下载失败: curl rc=${NET_CURL_RC}（${hint}）${NC}"
         fi
         return 1
     fi

@@ -60,6 +60,22 @@ net_get() {
     esac
 }
 
+# 把 curl 退出码翻译成人话，省得下次对着数字猜
+net_rc_hint() {
+    case "$1" in
+        5)   echo "代理地址解析失败，检查 SOCKS5_PROXY / http_proxy" ;;
+        6)   echo "域名解析失败（DNS）" ;;
+        7)   echo "连不上目标（端口不通或被墙）" ;;
+        28)  echo "下载超时" ;;
+        35)  echo "TLS 握手失败（可能被拦截）" ;;
+        52)  echo "服务器返回空响应" ;;
+        56)  echo "连接被重置/读取失败" ;;
+        60)  echo "证书校验失败" ;;
+        97)  echo "代理握手失败：代理拒了 CONNECT 或直接断开，不是 GitHub 的问题" ;;
+        *)   echo "curl 退出码 $1" ;;
+    esac
+}
+
 check_and_install_deps() {
     # 定义颜色输出
     local RED='\033[0;31m'
@@ -183,7 +199,11 @@ download_and_extract_sql() {
         if [ $rc -eq 2 ]; then
             echo -e "${RED}❌ 下载失败: curl rc=${NET_CURL_RC}, HTTP ${NET_HTTP_CODE}（地址可能已失效，重试没用，需要人工检查）${NC}"
         else
-            echo -e "${RED}❌ 下载失败: curl rc=${NET_CURL_RC}, HTTP ${NET_HTTP_CODE}（网络/服务端故障，交给外层循环重试）${NC}"
+            local hint envpx
+            hint=$(net_rc_hint "$NET_CURL_RC")
+            envpx="${https_proxy:-${HTTPS_PROXY:-${ALL_PROXY:-${all_proxy:-${http_proxy:-${HTTP_PROXY:-}}}}}}"
+            echo -e "${RED}❌ 下载失败: curl rc=${NET_CURL_RC}, HTTP ${NET_HTTP_CODE}（${hint}）${NC}"
+            echo -e "${RED}   代理: SOCKS5_PROXY=${SOCKS5_PROXY:-未配置}${envpx:+，环境变量代理=${envpx}}${NC}"
         fi
         return 1
     fi

@@ -71,7 +71,7 @@ net_rc_hint() {
         52)  echo "服务器返回空响应（连接被中途掐掉）" ;;
         56)  echo "连接被重置/读取失败（中间设备 RST 也会这样）" ;;
         60)  echo "证书校验失败" ;;
-        97)  echo "代理/隧道这一段握手被打断：代理拒 CONNECT、代理不稳、或被 GFW 之类中间设备 RST 都可能，光看这个码分不清是谁动的手，用 curl -v 看断点" ;;
+        97)  echo "代理拒 CONNECT、代理不稳、或被 GFW 之类中间设备 RST" ;;
         *)   echo "curl 退出码 $1" ;;
     esac
 }
@@ -203,7 +203,6 @@ download_and_extract_sql() {
             hint=$(net_rc_hint "$NET_CURL_RC")
             envpx="${https_proxy:-${HTTPS_PROXY:-${ALL_PROXY:-${all_proxy:-${http_proxy:-${HTTP_PROXY:-}}}}}}"
             echo -e "${RED}❌ 下载失败: curl rc=${NET_CURL_RC}, HTTP ${NET_HTTP_CODE}（${hint}）${NC}"
-            echo -e "${RED}   代理: SOCKS5_PROXY=${SOCKS5_PROXY:-未配置}${envpx:+，环境变量代理=${envpx}}${NC}"
         fi
         return 1
     fi
